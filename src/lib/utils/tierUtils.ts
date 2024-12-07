@@ -109,11 +109,11 @@ export const calculateTierProgress = (
 
     if (nextTier) {
       const nextTierPercent = parseFloat(nextTier.staked_up_to_percent);
-      // Calculate total amount needed for next tier based on current total stake
+      // Calculate the absolute amount needed for next tier percentage of current total
       totalAmountForNext = (nextTierPercent * totalValue.amount) / 100;
       
+      // Calculate additional amount needed
       if (stakedValue.amount < totalAmountForNext) {
-        // Calculate how much more is needed
         additionalAmountNeeded = totalAmountForNext - stakedValue.amount;
       } else {
         additionalAmountNeeded = 0;
