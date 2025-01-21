@@ -5,11 +5,10 @@ import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { ChevronUp, ChevronDown } from 'lucide-react';
-import { TierProgress, TierEntity } from '@/lib/types/tier';
+import { TierProgress, TierEntity, TierProgressionType, TIER_PROGRESSION } from '@/lib/types/tier';
 import { StakedEntity } from '@/lib/types/staked';
 import { getTierConfig, calculateSafeUnstakeAmount, getTierDisplayName, getTierWeight } from '@/lib/utils/tierUtils';
 import { formatNumber } from '@/lib/utils/formatUtils';
-import { parseTokenString } from '@/lib/utils/tokenUtils';
 import { cn } from '@/lib/utils';
 
 interface TierDisplayProps {
@@ -19,6 +18,7 @@ interface TierDisplayProps {
   stakedData?: StakedEntity;
   totalStaked?: string;
   allTiers?: TierEntity[];
+  onRefreshData?: () => Promise<void>;
 }
 
 export const TierDisplay: React.FC<TierDisplayProps> = ({
@@ -27,7 +27,8 @@ export const TierDisplay: React.FC<TierDisplayProps> = ({
   isLoading,
   stakedData,
   totalStaked,
-  allTiers
+  allTiers,
+  onRefreshData
 }) => {
   // Buffer state with localStorage persistence
   const [bufferPercent, setBufferPercent] = useState(() => {
@@ -39,6 +40,14 @@ export const TierDisplay: React.FC<TierDisplayProps> = ({
   useEffect(() => {
     localStorage.setItem('staking-buffer-percent', bufferPercent.toString());
   }, [bufferPercent]);
+
+  // Set up polling for data updates
+  useEffect(() => {
+    if (!onRefreshData) return;
+
+    const interval = setInterval(onRefreshData, 10000); // Poll every 10 seconds
+    return () => clearInterval(interval);
+  }, [onRefreshData]);
 
   const safeUnstakeAmount = useMemo(() => {
     if (!stakedData?.staked_quantity || !totalStaked || !allTiers || !tierProgress?.currentTier) {
@@ -85,31 +94,32 @@ export const TierDisplay: React.FC<TierDisplayProps> = ({
     );
   }
 
-  const tierProgression = ['supplier', 'merchant', 'trader', 'marketmkr', 'exchange'];
-  const tierConfig = getTierConfig(stakedData.tier);
-  const TierIcon = tierConfig.icon;
-
-  const currentTierIndex = tierProgression.indexOf(stakedData.tier.toLowerCase());
-  const nextTierName = currentTierIndex < tierProgression.length - 1 
-    ? tierProgression[currentTierIndex + 1] 
+  const currentTierIndex = TIER_PROGRESSION.indexOf(stakedData.tier.toLowerCase() as TierProgressionType);
+  const nextTierName = currentTierIndex < TIER_PROGRESSION.length - 1 
+    ? TIER_PROGRESSION[currentTierIndex + 1] 
     : null;
+
+  const tierConfig = getTierConfig(stakedData.tier);
   const nextTierConfig = nextTierName ? getTierConfig(nextTierName) : null;
+  const TierIcon = tierConfig.icon;
 
   const { 
     currentStakedAmount, 
+    rawAmountForNext,
     totalAmountForNext,
     additionalAmountNeeded,
     symbol,
     progress,
+    feeRate,
+    feeAmount
   } = tierProgress;
 
-  // Calculate buffered amount needed
-  const bufferedAmountNeeded = additionalAmountNeeded 
+  // Calculate total amount needed with buffer
+  const bufferedAmount = additionalAmountNeeded 
     ? additionalAmountNeeded * (1 + bufferPercent / 100)
     : undefined;
 
-  const variant = stakedData.tier.toLowerCase().replace(/\s+/g, '') as
-    'supplier' | 'merchant' | 'trader' | 'marketmkr' | 'exchange';
+  const variant = stakedData.tier.toLowerCase() as TierProgressionType;
 
   return (
     <Card className="w-full crystal-bg group">
@@ -160,7 +170,7 @@ export const TierDisplay: React.FC<TierDisplayProps> = ({
           </div>
         </div>
 
-        {nextTierName && typeof bufferedAmountNeeded === 'number' && (
+        {nextTierName && typeof bufferedAmount === 'number' && (
           <div className="bg-slate-800/30 rounded-lg p-4 border border-slate-700/50">
             <div className="flex items-center justify-between mb-2">
               <p className="text-slate-400">Progress to {getTierDisplayName(nextTierName)}</p>
@@ -171,20 +181,27 @@ export const TierDisplay: React.FC<TierDisplayProps> = ({
               )}
             </div>
             <div className="space-y-2">
-              {totalAmountForNext && (
-                <p className="text-sm text-slate-300">
-                  Total needed: {formatNumber(totalAmountForNext)} {symbol}
-                </p>
+              {rawAmountForNext && (
+                <div className="space-y-1">
+                  <p className="text-sm text-slate-300">
+                    Base amount needed: {formatNumber(rawAmountForNext)} {symbol}
+                  </p>
+                  {feeAmount && feeRate && (
+                    <p className="text-xs text-slate-400">
+                      +{formatNumber(feeAmount)} {symbol} ({(feeRate * 100).toFixed(1)}% fee)
+                    </p>
+                  )}
+                </div>
               )}
               <p className={cn(
                 "font-medium",
-                bufferedAmountNeeded <= 0 ? "text-green-400" : nextTierConfig?.color
+                bufferedAmount <= 0 ? "text-green-400" : nextTierConfig?.color
               )}>
-                {bufferedAmountNeeded <= 0 
+                {bufferedAmount <= 0 
                   ? 'Ready to Advance!'
-                  : `Need ${formatNumber(bufferedAmountNeeded)} ${symbol} more`
+                  : `Need ${formatNumber(bufferedAmount)} ${symbol} more`
                 }
-                {bufferPercent > 0 && bufferedAmountNeeded > 0 && (
+                {bufferPercent > 0 && bufferedAmount > 0 && (
                   <span className="text-sm text-slate-400 ml-1">
                     (includes {bufferPercent}% buffer)
                   </span>
@@ -197,7 +214,10 @@ export const TierDisplay: React.FC<TierDisplayProps> = ({
               {/* Buffer controls */}
               <div className="pt-4 mt-2 border-t border-slate-700/50 space-y-2">
                 <Label className="text-sm text-slate-300">
-                  Buffer Amount
+                  Buffer Amount 
+                  <span className="text-slate-400 ml-2">
+                    (extra amount to cover pool changes)
+                  </span>
                 </Label>
                 <div className="flex items-center gap-2">
                   <div className="relative flex-1">
@@ -239,7 +259,7 @@ export const TierDisplay: React.FC<TierDisplayProps> = ({
           </div>
         )}
 
-        {currentTierIndex === tierProgression.length - 1 && (
+        {currentTierIndex === TIER_PROGRESSION.length - 1 && (
           <div className="bg-slate-800/30 rounded-lg p-4 border border-slate-700/50 text-center">
             <p className={cn("text-lg font-medium", tierConfig.color)}>
               Maximum Tier Reached!
