@@ -1,5 +1,4 @@
-// src/lib/utils/tierUtils.ts
-import { TierEntity, TierProgress, TierVariant } from '../types/tier';
+import { TierEntity, TierProgress, TierProgressionType, TIER_PROGRESSION } from '../types/tier';
 import { Store, Building2, TrendingUp, BarChart3 } from 'lucide-react';
 import { parseTokenString } from './tokenUtils';
 import { cn } from '@/lib/utils';
@@ -7,27 +6,6 @@ import { DEFAULT_TIERS } from '../config/tiers';
 
 const FEE_RATE = 0.003; // 0.3% fee as per contract
 const PRECISION = 100000000; // 8 decimal places for WAX
-
-// Define the progression type
-type TierProgressionType = typeof TIER_PROGRESSION[number];
-
-// Tier progression order matching contract
-const TIER_PROGRESSION = ['supplier', 'merchant', 'trader', 'marketmkr', 'exchange'] as const;
-
-// Sort tiers to match progression
-const sortTiersByProgression = (tiers: TierEntity[]): TierEntity[] => {
-  return [...tiers].sort((a, b) => {
-    const aIndex = TIER_PROGRESSION.indexOf(a.tier.toLowerCase() as TierProgressionType);
-    const bIndex = TIER_PROGRESSION.indexOf(b.tier.toLowerCase() as TierProgressionType);
-    return aIndex - bIndex;
-  });
-};
-
-// Helper function for tier matching
-const findMatchingTier = (tierKey: string): TierEntity | undefined => {
-  const normalizedTierKey = tierKey.toLowerCase().trim();
-  return DEFAULT_TIERS.find(t => t.tier.toLowerCase() === normalizedTierKey);
-};
 
 // Tier configuration with styling and icons
 export const TIER_CONFIG = {
@@ -73,6 +51,31 @@ const applyWaxPrecision = (value: number): number => {
   return Math.round(value * PRECISION) / PRECISION;
 };
 
+// Helper function for tier matching
+const findMatchingTier = (tierKey: string): TierEntity | undefined => {
+  const normalizedKey = tierKey.toLowerCase().trim() as TierProgressionType;
+  const index = TIER_PROGRESSION.indexOf(normalizedKey);
+  return index >= 0 ? DEFAULT_TIERS[index] : undefined;
+};
+
+// Export a helper to get tier config with default supplier fallback
+export const getTierConfig = (tier: string) => {
+  const normalizedTier = tier.toLowerCase().replace(/\s+/g, '') as keyof typeof TIER_CONFIG;
+  return TIER_CONFIG[normalizedTier] || TIER_CONFIG.supplier;
+};
+
+// Export utilities for tier info
+export const getTierDisplayName = (tierKey: string): string => {
+  const tier = findMatchingTier(tierKey);
+  return tier?.tier_name || tierKey;
+};
+
+export const getTierWeight = (tierKey: string): string => {
+  const tier = findMatchingTier(tierKey);
+  const weight = tier ? parseFloat(tier.weight) : 1.0;
+  return weight.toFixed(2);
+};
+
 // Export tier determination logic
 export const determineTier = (
   stakedAmount: string,
@@ -85,8 +88,7 @@ export const determineTier = (
 
     // If pool is empty, return lowest tier
     if (totalValue === 0) {
-      const lowestTier = sortTiersByProgression(tiers)[0];
-      return lowestTier;
+      return tiers[0];
     }
 
     // Calculate percentage with precise decimal handling
@@ -113,7 +115,38 @@ export const determineTier = (
   }
 };
 
-// Calculate safe unstake amount that won't drop tier (WITHOUT fee consideration)
+// Export the upgrade check function
+export const isTierUpgradeAvailable = (
+  currentStaked: string,
+  totalStaked: string,
+  currentTier: TierEntity,
+  tiers: TierEntity[]
+): boolean => {
+  try {
+    const normalizedTier = currentTier.tier.toLowerCase() as TierProgressionType;
+    const currentIndex = TIER_PROGRESSION.indexOf(normalizedTier);
+    if (currentIndex >= TIER_PROGRESSION.length - 1) return false;
+    
+    const nextTierKey = TIER_PROGRESSION[currentIndex + 1];
+    const nextTier = tiers.find(t => 
+      t.tier.toLowerCase() === nextTierKey
+    );
+    if (!nextTier) return false;
+
+    // Calculate current percentage with contract precision
+    const { amount: stakedValue } = parseTokenString(currentStaked);
+    const { amount: totalValue } = parseTokenString(totalStaked);
+    const stakedPercent = applyWaxPrecision((stakedValue / totalValue) * 100);
+    
+    // Check if we exceed next tier's threshold
+    return stakedPercent > parseFloat(nextTier.staked_up_to_percent);
+  } catch (error) {
+    console.error('Error checking tier upgrade availability:', error);
+    return false;
+  }
+};
+
+// Calculate safe unstake amount that won't drop tier (without fee consideration)
 export const calculateSafeUnstakeAmount = (
   stakedAmount: string,
   totalStaked: string,
@@ -126,12 +159,12 @@ export const calculateSafeUnstakeAmount = (
     
     if (totalValue === 0) return 0;
 
-    // Calculate minimum amount needed using integer arithmetic
+    // Calculate minimum amount needed to maintain tier
     const currentTierThreshold = parseFloat(currentTier.staked_up_to_percent);
     const minRequiredRaw = (currentTierThreshold * totalValue) / 100;
     const minRequired = applyWaxPrecision(minRequiredRaw);
 
-    // Calculate maximum safe unstake amount (without fee since fee is for staking only)
+    // Calculate safe unstake amount (no fee consideration for unstaking)
     const safeAmount = Math.max(0, stakedValue - minRequired);
 
     return applyWaxPrecision(safeAmount);
@@ -141,8 +174,7 @@ export const calculateSafeUnstakeAmount = (
   }
 };
 
-
-
+// Calculate tier progress matching contract logic
 export const calculateTierProgress = (
   stakedAmount: string,
   totalStaked: string,
@@ -215,7 +247,6 @@ export const calculateTierProgress = (
       progress = 100;
     }
 
-    // Always return a consistent object structure with all required properties
     return {
       currentTier,
       nextTier,
@@ -229,8 +260,8 @@ export const calculateTierProgress = (
       rawAmountForNext,
       totalAmountForNext,
       additionalAmountNeeded,
-      feeRate: FEE_RATE, // Always include feeRate
-      feeAmount: feeAmount || 0 // Provide default of 0 for feeAmount
+      feeRate: FEE_RATE,
+      feeAmount: feeAmount || 0
     };
   } catch (error) {
     console.error('Error in calculateTierProgress:', error);
