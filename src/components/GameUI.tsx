@@ -495,13 +495,15 @@ const handleLogout = async () => {
                   <PoolStats poolData={selectedPool} />
 
                   {tierProgress && (
-                    <TierDisplay 
-                      tierProgress={tierProgress}
-                      isUpgradeAvailable={canUpgradeTier}
-                      stakedData={playerStake}
-                      totalStaked={selectedPool.total_staked_quantity}
-                      allTiers={gameData.tiers}
-                    />
+<TierDisplay 
+  tierProgress={tierProgress}
+  isUpgradeAvailable={canUpgradeTier}
+  stakedData={playerStake}
+  totalStaked={selectedPool?.total_staked_quantity}
+  allTiers={gameData.tiers}
+  onRefreshData={loadData} // Add this line
+  isLoading={loading}
+/>
                   )}
                   
                   {gameData.config && (
