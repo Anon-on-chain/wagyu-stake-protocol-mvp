@@ -3,6 +3,7 @@ import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Progress } from '@/components/ui/progress';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 import { ChevronUp, ChevronDown } from 'lucide-react';
 import { TierProgress, TierEntity } from '@/lib/types/tier';
 import { StakedEntity } from '@/lib/types/staked';
@@ -194,7 +195,10 @@ export const TierDisplay: React.FC<TierDisplayProps> = ({
               </p>
 
               {/* Buffer controls */}
-              <div className="pt-4 mt-2 border-t border-slate-700/50">
+              <div className="pt-4 mt-2 border-t border-slate-700/50 space-y-2">
+                <Label className="text-sm text-slate-300">
+                  Buffer Amount
+                </Label>
                 <div className="flex items-center gap-2">
                   <div className="relative flex-1">
                     <Input
@@ -225,7 +229,7 @@ export const TierDisplay: React.FC<TierDisplayProps> = ({
                     </button>
                   </div>
                 </div>
-                <p className="text-xs text-slate-400 mt-1">
+                <p className="text-xs text-slate-400">
                   {bufferPercent === 0 
                     ? "No buffer - amount needed may increase as others stake" 
                     : `Adding ${bufferPercent}% extra to account for pool changes`}
