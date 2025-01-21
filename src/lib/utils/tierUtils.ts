@@ -141,7 +141,8 @@ export const calculateSafeUnstakeAmount = (
   }
 };
 
-// Calculate tier progress matching contract logic
+
+
 export const calculateTierProgress = (
   stakedAmount: string,
   totalStaked: string,
@@ -174,24 +175,28 @@ export const calculateTierProgress = (
       ? sortedTiers[currentTierIndex - 1] 
       : undefined;
 
-    // Calculate amounts needed for next tier
+    // Calculate base amounts needed for next tier
+    let rawAmountForNext: number | undefined;
     let totalAmountForNext: number | undefined;
     let additionalAmountNeeded: number | undefined;
+    let feeAmount: number | undefined;
 
     if (nextTier) {
+      // Calculate raw amount needed before fees
       const nextTierThreshold = parseFloat(nextTier.staked_up_to_percent);
-      // Calculate base amount needed for next tier
-      totalAmountForNext = applyWaxPrecision((nextTierThreshold * totalValue) / 100);
+      rawAmountForNext = applyWaxPrecision((nextTierThreshold * totalValue) / 100);
       
-      if (stakedValue < totalAmountForNext) {
-        // Example: If we need 100 WAX total staked:
-        // 1. When user stakes X WAX, they only get X * (1 - fee) = X * 0.997 credited
-        // 2. So if we need 100 WAX credited, they need to stake 100 / 0.997 ≈ 100.3009 WAX
-        // 3. Then subtract what they already have staked
-        const totalNeededWithFee = applyWaxPrecision(totalAmountForNext / (1 - FEE_RATE));
-        additionalAmountNeeded = applyWaxPrecision(Math.max(0, totalNeededWithFee - stakedValue));
+      if (stakedValue < rawAmountForNext) {
+        // Calculate fee amount
+        const baseAmountNeeded = rawAmountForNext - stakedValue;
+        feeAmount = applyWaxPrecision(baseAmountNeeded * FEE_RATE / (1 - FEE_RATE));
+        
+        // Calculate total needed with fee
+        additionalAmountNeeded = applyWaxPrecision(baseAmountNeeded + feeAmount);
+        totalAmountForNext = applyWaxPrecision(rawAmountForNext + feeAmount);
       } else {
         additionalAmountNeeded = 0;
+        totalAmountForNext = rawAmountForNext;
       }
     }
 
@@ -210,6 +215,7 @@ export const calculateTierProgress = (
       progress = 100;
     }
 
+    // Always return a consistent object structure with all required properties
     return {
       currentTier,
       nextTier,
@@ -220,57 +226,14 @@ export const calculateTierProgress = (
       stakedAmount,
       currentStakedAmount: stakedValue,
       symbol,
+      rawAmountForNext,
       totalAmountForNext,
-      additionalAmountNeeded
+      additionalAmountNeeded,
+      feeRate: FEE_RATE, // Always include feeRate
+      feeAmount: feeAmount || 0 // Provide default of 0 for feeAmount
     };
   } catch (error) {
     console.error('Error in calculateTierProgress:', error);
     return null;
   }
 };
-
-export const getTierConfig = (tier: string) => {
-  const normalizedTier = tier.toLowerCase().replace(/\s+/g, '');
-  return TIER_CONFIG[normalizedTier as keyof typeof TIER_CONFIG] || TIER_CONFIG.supplier;
-};
-
-export const isTierUpgradeAvailable = (
-  currentStaked: string,
-  totalStaked: string,
-  currentTier: TierEntity,
-  tiers: TierEntity[]
-): boolean => {
-  try {
-    // Get next tier threshold
-    const sortedTiers = [...tiers].sort((a, b) => 
-      parseFloat(a.staked_up_to_percent) - parseFloat(b.staked_up_to_percent)
-    );
-    
-    const currentTierIndex = sortedTiers.findIndex(t => t.tier === currentTier.tier);
-    if (currentTierIndex >= sortedTiers.length - 1) return false;
-    
-    const nextTier = sortedTiers[currentTierIndex + 1];
-    
-    // Calculate current percentage with contract precision
-    const { amount: stakedValue } = parseTokenString(currentStaked);
-    const { amount: totalValue } = parseTokenString(totalStaked);
-    const stakedPercent = applyWaxPrecision((stakedValue / totalValue) * 100);
-    
-    // Check if we exceed next tier's threshold
-    return stakedPercent > parseFloat(nextTier.staked_up_to_percent);
-  } catch (error) {
-    console.error('Error checking tier upgrade availability:', error);
-    return false;
-  }
-};
-
-export function getTierDisplayName(tierKey: string): string {
-  const matchingTier = findMatchingTier(tierKey);
-  return matchingTier?.tier_name || tierKey;
-}
-
-export function getTierWeight(tierKey: string): string {
-  const matchingTier = findMatchingTier(tierKey);
-  const weight = matchingTier ? parseFloat(matchingTier.weight) : 1.0;
-  return weight.toFixed(2);
-}
