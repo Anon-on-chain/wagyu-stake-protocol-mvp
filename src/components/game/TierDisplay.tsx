@@ -1,7 +1,9 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useState, useEffect } from 'react';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Progress } from '@/components/ui/progress';
 import { Badge } from '@/components/ui/badge';
+import { Input } from '@/components/ui/input';
+import { ChevronUp, ChevronDown } from 'lucide-react';
 import { TierProgress, TierEntity } from '@/lib/types/tier';
 import { StakedEntity } from '@/lib/types/staked';
 import { getTierConfig, calculateSafeUnstakeAmount, getTierDisplayName, getTierWeight } from '@/lib/utils/tierUtils';
@@ -26,6 +28,17 @@ export const TierDisplay: React.FC<TierDisplayProps> = ({
   totalStaked,
   allTiers
 }) => {
+  // Buffer state with localStorage persistence
+  const [bufferPercent, setBufferPercent] = useState(() => {
+    const saved = localStorage.getItem('staking-buffer-percent');
+    return saved ? parseFloat(saved) : 5.0; // Default 5%
+  });
+
+  // Save buffer to localStorage when it changes
+  useEffect(() => {
+    localStorage.setItem('staking-buffer-percent', bufferPercent.toString());
+  }, [bufferPercent]);
+
   const safeUnstakeAmount = useMemo(() => {
     if (!stakedData?.staked_quantity || !totalStaked || !allTiers || !tierProgress?.currentTier) {
       return 0;
@@ -37,6 +50,21 @@ export const TierDisplay: React.FC<TierDisplayProps> = ({
       tierProgress.currentTier
     );
   }, [stakedData, totalStaked, allTiers, tierProgress]);
+
+  // Buffer adjustment handlers
+  const adjustBuffer = (delta: number) => {
+    const newValue = Number((bufferPercent + delta).toFixed(1));
+    if (newValue >= 0 && newValue <= 100) {
+      setBufferPercent(newValue);
+    }
+  };
+
+  const handleBufferInput = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const value = parseFloat(e.target.value);
+    if (!isNaN(value) && value >= 0 && value <= 100) {
+      setBufferPercent(Number(value.toFixed(1)));
+    }
+  };
 
   if (isLoading || !tierProgress || !stakedData) {
     return (
@@ -73,6 +101,11 @@ export const TierDisplay: React.FC<TierDisplayProps> = ({
     symbol,
     progress,
   } = tierProgress;
+
+  // Calculate buffered amount needed
+  const bufferedAmountNeeded = additionalAmountNeeded 
+    ? additionalAmountNeeded * (1 + bufferPercent / 100)
+    : undefined;
 
   const variant = stakedData.tier.toLowerCase().replace(/\s+/g, '') as
     'supplier' | 'merchant' | 'trader' | 'marketmkr' | 'exchange';
@@ -126,7 +159,7 @@ export const TierDisplay: React.FC<TierDisplayProps> = ({
           </div>
         </div>
 
-        {nextTierName && typeof additionalAmountNeeded === 'number' && (
+        {nextTierName && typeof bufferedAmountNeeded === 'number' && (
           <div className="bg-slate-800/30 rounded-lg p-4 border border-slate-700/50">
             <div className="flex items-center justify-between mb-2">
               <p className="text-slate-400">Progress to {getTierDisplayName(nextTierName)}</p>
@@ -144,16 +177,60 @@ export const TierDisplay: React.FC<TierDisplayProps> = ({
               )}
               <p className={cn(
                 "font-medium",
-                additionalAmountNeeded <= 0 ? "text-green-400" : nextTierConfig?.color
+                bufferedAmountNeeded <= 0 ? "text-green-400" : nextTierConfig?.color
               )}>
-                {additionalAmountNeeded <= 0 
+                {bufferedAmountNeeded <= 0 
                   ? 'Ready to Advance!'
-                  : `Need ${formatNumber(additionalAmountNeeded)} ${symbol} more`
+                  : `Need ${formatNumber(bufferedAmountNeeded)} ${symbol} more`
                 }
+                {bufferPercent > 0 && bufferedAmountNeeded > 0 && (
+                  <span className="text-sm text-slate-400 ml-1">
+                    (includes {bufferPercent}% buffer)
+                  </span>
+                )}
               </p>
               <p className="text-xs text-slate-500">
                 Currently staking {formatNumber(currentStakedAmount)} {symbol}
               </p>
+
+              {/* Buffer controls */}
+              <div className="pt-4 mt-2 border-t border-slate-700/50">
+                <div className="flex items-center gap-2">
+                  <div className="relative flex-1">
+                    <Input
+                      type="number"
+                      min="0"
+                      max="100"
+                      step="0.1"
+                      value={bufferPercent}
+                      onChange={handleBufferInput}
+                      className="pr-8 bg-slate-800/50 text-white"
+                    />
+                    <div className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400">
+                      %
+                    </div>
+                  </div>
+                  <div className="flex flex-col gap-0.5">
+                    <button
+                      onClick={() => adjustBuffer(0.1)}
+                      className="p-1 hover:bg-slate-700/50 rounded text-slate-300"
+                    >
+                      <ChevronUp className="w-4 h-4" />
+                    </button>
+                    <button
+                      onClick={() => adjustBuffer(-0.1)}
+                      className="p-1 hover:bg-slate-700/50 rounded text-slate-300"
+                    >
+                      <ChevronDown className="w-4 h-4" />
+                    </button>
+                  </div>
+                </div>
+                <p className="text-xs text-slate-400 mt-1">
+                  {bufferPercent === 0 
+                    ? "No buffer - amount needed may increase as others stake" 
+                    : `Adding ${bufferPercent}% extra to account for pool changes`}
+                </p>
+              </div>
             </div>
           </div>
         )}
