@@ -30,22 +30,18 @@ export const TierDisplay: React.FC<TierDisplayProps> = ({
   allTiers,
   onRefreshData
 }) => {
-  // Buffer state with localStorage persistence
   const [bufferPercent, setBufferPercent] = useState(() => {
     const saved = localStorage.getItem('staking-buffer-percent');
-    return saved ? parseFloat(saved) : 5.0; // Default 5%
+    return saved ? parseFloat(saved) : 5.0;
   });
 
-  // Save buffer to localStorage when it changes
   useEffect(() => {
     localStorage.setItem('staking-buffer-percent', bufferPercent.toString());
   }, [bufferPercent]);
 
-  // Set up polling for data updates
   useEffect(() => {
     if (!onRefreshData) return;
-
-    const interval = setInterval(onRefreshData, 10000); // Poll every 10 seconds
+    const interval = setInterval(onRefreshData, 10000);
     return () => clearInterval(interval);
   }, [onRefreshData]);
 
@@ -61,7 +57,6 @@ export const TierDisplay: React.FC<TierDisplayProps> = ({
     );
   }, [stakedData, totalStaked, allTiers, tierProgress]);
 
-  // Buffer adjustment handlers
   const adjustBuffer = (delta: number) => {
     const newValue = Number((bufferPercent + delta).toFixed(1));
     if (newValue >= 0 && newValue <= 100) {
@@ -114,7 +109,6 @@ export const TierDisplay: React.FC<TierDisplayProps> = ({
     feeAmount
   } = tierProgress;
 
-  // Calculate total amount needed with buffer
   const bufferedAmount = additionalAmountNeeded 
     ? additionalAmountNeeded * (1 + bufferPercent / 100)
     : undefined;
@@ -211,7 +205,6 @@ export const TierDisplay: React.FC<TierDisplayProps> = ({
                 Currently staking {formatNumber(currentStakedAmount)} {symbol}
               </p>
 
-              {/* Buffer controls */}
               <div className="pt-4 mt-2 border-t border-slate-700/50 space-y-2">
                 <Label className="text-sm text-slate-300">
                   Buffer Amount 
