@@ -1,15 +1,17 @@
-// src/lib/hooks/useTierCalculation.ts
 import { useMemo } from 'react';
 import { TierEntity, TierProgress } from '../types/tier';
 import { StakedEntity } from '../types/staked';
 import { PoolEntity } from '../types/pool';
 import { parseTokenString } from '../utils/tokenUtils';
 
+const FEE_RATE = 0.003; // 0.3% fee as per contract
+const PRECISION = 100000000; // 8 decimal places for WAX
+
 export function useTierCalculation(
   stakedData: StakedEntity | undefined,
   poolData: PoolEntity | undefined,
   tiers: TierEntity[]
-) {
+): TierProgress | null {
   return useMemo(() => {
     if (!stakedData || !poolData || !tiers.length) {
       return null;
@@ -30,7 +32,11 @@ export function useTierCalculation(
           currentStakedAmount: stakedAmount,
           requiredForCurrent: 0,
           symbol: 'WAX',
-          weight: parseFloat(tiers[0].weight)  // Added weight
+          feeRate: FEE_RATE,
+          feeAmount: 0,
+          rawAmountForNext: 0,
+          totalAmountForNext: 0,
+          additionalAmountNeeded: 0
         };
       }
 
@@ -58,7 +64,7 @@ export function useTierCalculation(
         }
       }
 
-      // Calculate progress
+      // Get next and previous tiers
       const nextTier = currentTierIndex < sortedTiers.length - 1 
         ? sortedTiers[currentTierIndex + 1] 
         : undefined;
@@ -66,19 +72,40 @@ export function useTierCalculation(
         ? sortedTiers[currentTierIndex - 1] 
         : undefined;
 
+      // Calculate progress percentage
       let progress = 100;
       if (nextTier) {
         const range = parseFloat(nextTier.staked_up_to_percent) - parseFloat(currentTier.staked_up_to_percent);
         progress = ((stakedPercent - parseFloat(currentTier.staked_up_to_percent)) / range) * 100;
       }
 
-      const requiredForCurrent = (parseFloat(currentTier.staked_up_to_percent) * totalStaked) / 100;
-      const totalAmountForNext = nextTier 
-        ? (parseFloat(nextTier.staked_up_to_percent) * totalStaked) / 100 
-        : undefined;
-      const additionalAmountNeeded = totalAmountForNext && totalAmountForNext > stakedAmount 
-        ? totalAmountForNext - stakedAmount 
-        : undefined;
+      // Calculate required amounts
+      const requiredForCurrent = Math.round((parseFloat(currentTier.staked_up_to_percent) * totalStaked) / 100);
+      
+      // Calculate next tier amounts with fee
+      let rawAmountForNext: number | undefined;
+      let totalAmountForNext: number | undefined;
+      let additionalAmountNeeded: number | undefined;
+      let feeAmount: number | undefined;
+
+      if (nextTier) {
+        // Base amount needed before fees
+        rawAmountForNext = Math.round((parseFloat(nextTier.staked_up_to_percent) * totalStaked) / 100);
+        
+        if (stakedAmount < rawAmountForNext) {
+          // Calculate base amount needed
+          const baseAmountNeeded = rawAmountForNext - stakedAmount;
+          // Calculate fee amount
+          feeAmount = Math.round(baseAmountNeeded * FEE_RATE / (1 - FEE_RATE));
+          // Total amount needed including fee
+          additionalAmountNeeded = baseAmountNeeded + feeAmount;
+          totalAmountForNext = rawAmountForNext + feeAmount;
+        } else {
+          feeAmount = 0;
+          additionalAmountNeeded = 0;
+          totalAmountForNext = rawAmountForNext;
+        }
+      }
 
       return {
         currentTier,
@@ -90,10 +117,13 @@ export function useTierCalculation(
         currentStakedAmount: stakedAmount,
         requiredForCurrent,
         symbol: 'WAX',
+        rawAmountForNext,
         totalAmountForNext,
         additionalAmountNeeded,
-        weight: parseFloat(currentTier.weight)  // Added correct weight
+        feeRate: FEE_RATE,
+        feeAmount: feeAmount || 0
       };
+
     } catch (error) {
       console.error('Error calculating tier:', error);
       return null;
