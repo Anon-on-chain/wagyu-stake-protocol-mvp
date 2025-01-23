@@ -24,29 +24,26 @@ export const PoolStats: React.FC<PoolStatsProps> = ({ poolData, isLoading }) => 
     );
   };
 
-  // Calculate current rewards based on smart contract logic
   useEffect(() => {
     if (!poolData || !isValidPoolData(poolData)) return;
-
+    
     const calculateCurrentRewards = () => {
       try {
-        // Parse initial rewards from the pool maintaining precision
+        // Parse initial rewards from the pool
         const [initialAmountStr] = poolData.reward_pool.quantity.split(' ');
-        const initialAmount = Math.round(parseFloat(initialAmountStr) * 100000000); // Convert to integer (8 decimals)
+        const initialAmount = parseFloat(initialAmountStr);
         
-        // Calculate time elapsed since last emission update
+        // Calculate elapsed time
         const lastUpdate = new Date(poolData.last_emission_updated_at).getTime();
         const currentTime = new Date().getTime();
-        const elapsedMilliseconds = currentTime - lastUpdate;
-        const elapsedSeconds = Math.floor(elapsedMilliseconds / 1000);
+        const elapsedSeconds = Math.floor((currentTime - lastUpdate) / 1000);
         
-        // Calculate emissions using integer arithmetic like the contract
-        const emissionPeriods = Math.floor(elapsedSeconds / poolData.emission_unit);
-        const emissionAmount = BigInt(emissionPeriods) * BigInt(poolData.emission_rate);
+        // Calculate emissions matching contract precision
+        const emissionPerSecond = (poolData.emission_rate / 100000000) / poolData.emission_unit;
+        const newEmissions = elapsedSeconds * emissionPerSecond;
         
-        // Convert back to floating point with proper precision
-        const totalAmount = Number(initialAmount + Number(emissionAmount));
-        return totalAmount / 100000000; // Convert back to 8 decimal places
+        // Return total with proper precision
+        return Math.round((initialAmount + newEmissions) * 100000000) / 100000000;
       } catch (error) {
         console.error('Error calculating rewards:', error);
         return 0;
@@ -105,7 +102,7 @@ export const PoolStats: React.FC<PoolStatsProps> = ({ poolData, isLoading }) => 
     try {
       const [amount, symbol = 'WAX'] = value.split(' ');
       return {
-        amount: parseFloat(amount).toFixed(8), // Maintain 8 decimal places
+        amount: parseFloat(amount).toFixed(8),
         symbol
       };
     } catch (e) {
