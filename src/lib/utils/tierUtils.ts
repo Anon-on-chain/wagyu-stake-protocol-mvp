@@ -5,9 +5,10 @@ import { TIER_CONFIG } from '../config/tierConfig';
 const FEE_RATE = 0.003; // 0.3% fee as per contract
 const PRECISION = 100000000; // 8 decimal places for WAX
 
-// Helper function to apply WAX precision
-const applyWaxPrecision = (value: number): number => {
-  return Math.round(value * PRECISION) / PRECISION;
+// Helper function to apply precision based on token's decimals
+const applyPrecision = (value: number, decimals: number): number => {
+  const precision = Math.pow(10, decimals);
+  return Math.round(value * precision) / precision;
 };
 
 // Determine which tier a user is in based on their staked percentage
