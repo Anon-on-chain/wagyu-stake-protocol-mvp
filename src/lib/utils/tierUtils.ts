@@ -89,7 +89,7 @@ export const calculateSafeUnstakeAmount = (
     
     // For lowest tier, can unstake everything
     if (currentTierIndex <= 0) {
-      return applyWaxPrecision(stakedValue);
+      return applyPrecision(stakedValue);
     }
 
     // Get the previous tier's threshold - need to stay above this to maintain current tier
@@ -99,7 +99,7 @@ export const calculateSafeUnstakeAmount = (
     // Calculate how much we can unstake while staying above previous tier's threshold
     const safeAmount = Math.max(0, stakedValue - minRequired);
     
-    return applyWaxPrecision(safeAmount);
+    return applyPrecision(safeAmount);
   } catch (error) {
     console.error('Error calculating safe unstake amount:', error);
     return 0;
@@ -191,8 +191,8 @@ export const calculateTierProgress = (
         const amountNeeded = (targetAmount - stakedValue) / denominator;
         
         if (amountNeeded > 0) {
-          totalAmountForNext = applyWaxPrecision(targetAmount);
-          additionalAmountNeeded = applyWaxPrecision(Math.max(0, amountNeeded));
+          totalAmountForNext = applyPrecision(targetAmount);
+          additionalAmountNeeded = applyPrecision(Math.max(0, amountNeeded));
         } else {
           additionalAmountNeeded = 0;
         }
@@ -201,7 +201,7 @@ export const calculateTierProgress = (
 
     // Calculate required amount for current tier
     const currentTierThreshold = parseFloat(currentTier.staked_up_to_percent);
-    const requiredForCurrent = applyWaxPrecision((currentTierThreshold * totalValue) / 100);
+    const requiredForCurrent = applyPrecision((currentTierThreshold * totalValue) / 100);
 
     return {
       currentTier,
