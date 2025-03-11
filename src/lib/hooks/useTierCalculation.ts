@@ -1,3 +1,5 @@
+// src/lib/hooks/useTierCalculation.ts
+
 import { useMemo } from 'react';
 import { TierEntity, TierProgress } from '../types/tier';
 import { StakedEntity } from '../types/staked';
@@ -21,60 +23,89 @@ export function useTierCalculation(
     }
     
     try {
-      // Perform calculation with fresh data each time
-      console.log('Recalculating tier progress with fresh data:', {
+      console.log('Calculating tier data with:', {
         stakedQuantity: stakedData.staked_quantity,
         poolTotal: poolData.total_staked_quantity,
         tier: stakedData.tier
       });
       
-      // Get tier calculation based on accurate data
+      // Get token decimals from staked amount
+      const { decimals } = parseTokenString(stakedData.staked_quantity);
+      
+      // Calculate tier progress
       const progress = calculateTierProgress(
         stakedData.staked_quantity,
         poolData.total_staked_quantity,
         tiers
       );
       
-      // Consistency check - ensure current tier matches stake data
-      if (progress && progress.currentTier.tier !== stakedData.tier) {
+      if (!progress) return null;
+      
+      // Check if the backend tier doesn't match what we calculate
+      // This can happen right after a stake operation
+      if (progress.currentTier.tier !== stakedData.tier) {
         console.warn(`Tier mismatch detected: stakedData.tier=${stakedData.tier}, progress.currentTier.tier=${progress.currentTier.tier}`);
         
-        // Override with stakedData.tier for UI consistency
-        // This handles cases where the backend has already upgraded the tier
-        const correctTier = tiers.find(t => t.tier === stakedData.tier);
-        if (correctTier) {
-          console.log(`Using tier from stakedData: ${stakedData.tier} instead of calculated tier: ${progress.currentTier.tier}`);
-          
-          // Recalculate tier progress with the enforced tier
+        // Find the user's claimed tier in our tier list
+        const userTier = tiers.find(t => t.tier === stakedData.tier);
+        
+        if (userTier) {
+          // Sort tiers to find next/prev tiers relative to user's claimed tier
           const sortedTiers = [...tiers].sort((a, b) => 
             parseFloat(a.staked_up_to_percent) - parseFloat(b.staked_up_to_percent)
           );
           
-          const currentTierIndex = sortedTiers.findIndex(t => t.tier === stakedData.tier);
+          const userTierIndex = sortedTiers.findIndex(t => t.tier === stakedData.tier);
           
-          if (currentTierIndex !== -1) {
-            // Adjust next tier based on enforced current tier
-            const nextTierIndex = currentTierIndex + 1;
+          if (userTierIndex !== -1) {
+            // Find next tier
+            const nextTierIndex = userTierIndex + 1;
             const nextTier = nextTierIndex < sortedTiers.length 
               ? sortedTiers[nextTierIndex] 
               : undefined;
               
-            // Adjust previous tier based on enforced current tier
-            const prevTierIndex = currentTierIndex - 1;
+            // Find prev tier
+            const prevTierIndex = userTierIndex - 1;
             const prevTier = prevTierIndex >= 0 
               ? sortedTiers[prevTierIndex] 
               : undefined;
+              
+            // Calculate current tier percentage
+            const { amount: stakedValue } = parseTokenString(stakedData.staked_quantity);
+            const { amount: totalValue } = parseTokenString(poolData.total_staked_quantity);
+            const stakedPercent = (stakedValue / totalValue) * 100;
             
-            return {
+            // Get tier thresholds for progress calculation
+            const userTierThreshold = parseFloat(userTier.staked_up_to_percent);
+            const nextTierThreshold = nextTier ? parseFloat(nextTier.staked_up_to_percent) : 100;
+            
+            // Calculate progress within current tier
+            let progress = 0;
+            if (nextTier) {
+              const rangeSize = nextTierThreshold - userTierThreshold;
+              progress = rangeSize > 0
+                ? ((stakedPercent - userTierThreshold) / rangeSize) * 100
+                : 100;
+              progress = Math.min(100, Math.max(0, progress));
+            } else {
+              progress = 100; // At max tier
+            }
+            
+            // Create adjusted tier progress with user's actual tier
+            const adjusted = {
               ...progress,
-              currentTier: correctTier,
+              currentTier: userTier,
               nextTier,
-              prevTier
+              prevTier,
+              progress
             };
+            
+            return adjusted;
           }
         }
       }
       
+      // Return original progress if no adjustment needed
       return progress;
     } catch (error) {
       console.error('Error in useTierCalculation:', error);
@@ -86,5 +117,5 @@ export function useTierCalculation(
     poolData?.total_staked_quantity,
     poolData?.pool_id,
     tiers
-  ]); // Add more explicit dependencies for better memoization
+  ]);
 }
