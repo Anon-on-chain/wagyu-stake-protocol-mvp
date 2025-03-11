@@ -156,7 +156,7 @@ const GameUI: React.FC = () => {
     // Add a slight delay before reloading data to allow backend to update
     setTimeout(() => {
       loadData();
-    }, 500);
+    }, 1000);
     
     // Return to previous tab if needed
     if (previousTab !== activeTab) {
