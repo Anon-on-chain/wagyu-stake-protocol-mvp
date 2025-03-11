@@ -1,22 +1,15 @@
+// src/lib/utils/tierUtils.ts - Enhanced for accurate projection
+
 import { TierEntity, TierProgress } from '../types/tier';
 import { parseTokenString } from './tokenUtils';
 import { TIER_CONFIG } from '../config/tierConfig';
 
-// Dynamic fee rate from contract
-const FEE_RATE = 0.003; // 0.3% fee as per contract
+// Fee rate from contract (0.3%)
+const FEE_RATE = 0.003;
 
 /**
- * Helper function to apply precision based on token decimals
- */
-const applyPrecision = (value: number, decimals: number = 8): number => {
-  if (decimals <= 0) return Math.round(value);
-  const precision = Math.pow(10, decimals);
-  return Math.floor(value * precision) / precision;
-};
-
-/**
- * Determine the tier a user belongs to based on their staked percentage
- * This is the fundamental function that all other tier calculations should use
+ * Determines the tier based on staked percentage
+ * This is the fundamental function for tier calculation
  */
 export const determineTier = (
   stakedAmount: string,
@@ -29,153 +22,106 @@ export const determineTier = (
 
     // Handle edge cases
     if (totalValue === 0 || stakedValue === 0) {
-      const sortedTiers = [...tiers].sort((a, b) => 
+      const lowestTier = [...tiers].sort((a, b) => 
         parseFloat(a.staked_up_to_percent) - parseFloat(b.staked_up_to_percent)
-      );
-      console.log('Edge case: empty pool or no stake, returning lowest tier');
-      return sortedTiers[0];
+      )[0];
+      return lowestTier;
     }
 
-    // Calculate user's stake percentage
+    // Calculate percentage with precise decimal handling
     const stakedPercent = (stakedValue / totalValue) * 100;
     
-    // Debug logs
-    console.log(`Tier calculation: ${stakedValue.toFixed(8)} is ${stakedPercent.toFixed(4)}% of ${totalValue.toFixed(8)}`);
-
-    // Sort tiers by percentage threshold (ascending)
+    // Sort tiers by percentage threshold
     const sortedTiers = [...tiers].sort((a, b) => 
       parseFloat(a.staked_up_to_percent) - parseFloat(b.staked_up_to_percent)
     );
 
-    // Find the appropriate tier where user's percentage is <= threshold
+    // Find the last tier where user's percentage is > threshold
     let currentTier = sortedTiers[0]; // Default to lowest tier
     
     for (let i = 0; i < sortedTiers.length; i++) {
       const tierThreshold = parseFloat(sortedTiers[i].staked_up_to_percent);
       
       if (stakedPercent <= tierThreshold) {
-        // Found the first tier where threshold >= percentage
+        // Found the first tier where user's percentage is <= threshold
         if (i > 0) {
-          // User is in the previous tier
+          // User is in the previous tier (last one where percentage > threshold)
           currentTier = sortedTiers[i-1];
-          console.log(`User in tier: ${currentTier.tier} (${stakedPercent.toFixed(4)}% <= ${tierThreshold}%)`);
         } else {
           // User is in the lowest tier
           currentTier = sortedTiers[0];
-          console.log(`User in lowest tier: ${currentTier.tier} (${stakedPercent.toFixed(4)}% <= ${tierThreshold}%)`);
         }
         return currentTier;
       }
     }
     
     // If user's percentage exceeds all thresholds, return highest tier
-    currentTier = sortedTiers[sortedTiers.length - 1];
-    console.log(`User in highest tier: ${currentTier.tier} (${stakedPercent.toFixed(4)}% > all thresholds)`);
-    return currentTier;
+    return sortedTiers[sortedTiers.length - 1];
   } catch (error) {
     console.error('Error determining tier:', error);
-    if (tiers.length > 0) {
-      const sortedTiers = [...tiers].sort((a, b) => 
-        parseFloat(a.staked_up_to_percent) - parseFloat(b.staked_up_to_percent)
-      );
-      return sortedTiers[0];
-    }
-    throw new Error('No tier data available');
+    return tiers[0];
   }
 };
 
 /**
- * Get styling configuration for a tier
+ * Calculates how much MORE a user must stake to reach the next tier
+ * This is the key function that was causing issues
  */
-export const getTierConfig = (tier: string) => {
-  const config = TIER_CONFIG[tier.toLowerCase()] || TIER_CONFIG.a;
-  return config.style
-    ? {
-        ...config.style,
-        icon: config.icon
-      }
-    : {
-        color: 'text-slate-500',
-        bgColor: 'bg-slate-500/10',
-        borderColor: 'border-slate-500/20',
-        progressColor: 'bg-slate-500',
-        icon: config.icon
-      };
-};
-
-/**
- * Calculate how much a user can safely unstake without dropping more than one tier level
- */
-export const calculateSafeUnstakeAmount = (
-  stakedAmount: string,
-  totalStaked: string,
-  tiers: TierEntity[],
-  currentTier: TierEntity
-): number => {
-  try {
-    const { amount: stakedValue, decimals } = parseTokenString(stakedAmount);
-    const { amount: totalValue } = parseTokenString(totalStaked);
-    
-    if (totalValue === 0 || stakedValue === 0) return 0;
-
-    // Calculate current percentage in the pool
-    const stakedPercent = (stakedValue / totalValue) * 100;
-    console.log(`Safe unstake calc: ${stakedValue.toFixed(8)} is ${stakedPercent.toFixed(4)}% of ${totalValue.toFixed(8)}`);
-
-    // Sort tiers by percentage threshold (ascending)
-    const sortedTiers = [...tiers].sort((a, b) => 
-      parseFloat(a.staked_up_to_percent) - parseFloat(b.staked_up_to_percent)
-    );
-
-    // Find current tier index
-    const currentTierIndex = sortedTiers.findIndex(t => t.tier === currentTier.tier);
-    
-    // Handle edge case of invalid tier
-    if (currentTierIndex === -1) {
-      console.warn(`Current tier ${currentTier.tier} not found in tier list`);
-      return 0;
-    }
-    
-    // For lowest tier, can unstake almost everything
-    if (currentTierIndex === 0) {
-      return Math.max(0, stakedValue - 0.00000001);
-    }
-    
-    // Get the previous tier's threshold plus buffer
-    const prevTierIndex = currentTierIndex - 1;
-    const prevTier = sortedTiers[prevTierIndex];
-    const prevTierThreshold = parseFloat(prevTier.staked_up_to_percent) / 100;
-    const buffer = 0.005; // 0.5 percentage points buffer (not 5%!)
-    const targetRatio = prevTierThreshold + buffer;
-
-    // Correct formula for calculating safe unstake amount:
-    // (S - X) / (T - X) = targetRatio
-    // Solved for X: X = (S - targetRatio * T) / (1 - targetRatio)
-    const safeUnstakeAmount = (stakedValue - targetRatio * totalValue) / (1 - targetRatio);
-
-    // Apply precision and round down slightly to ensure we stay above threshold
-    const finalAmount = Math.max(0, Math.floor(safeUnstakeAmount * Math.pow(10, decimals)) / Math.pow(10, decimals));
-
-    console.log(`Safe unstake calculation:`, {
-      currentTier: currentTier.tier_name || currentTier.tier,
-      prevTier: prevTier.tier_name || prevTier.tier,
-      currentStake: stakedValue.toFixed(decimals),
-      prevTierThreshold: (prevTierThreshold * 100).toFixed(4) + '%',
-      targetRatio: (targetRatio * 100).toFixed(4) + '%',
-      safeUnstakeAmount: finalAmount.toFixed(decimals)
-    });
-
-    return finalAmount;
-  } catch (error) {
-    console.error('Error calculating safe unstake amount:', error);
-    return 0;
+export const calculateRequiredForNextTier = (
+  currentStakedAmount: number,
+  totalPoolAmount: number,
+  currentTier: TierEntity,
+  nextTier: TierEntity | undefined,
+  decimals: number = 8
+): { totalNeeded: number, additionalNeeded: number } => {
+  // If already at max tier or no next tier
+  if (!nextTier) {
+    return { totalNeeded: currentStakedAmount, additionalNeeded: 0 };
   }
+
+  const currentThreshold = parseFloat(currentTier.staked_up_to_percent) / 100;
+  const nextThreshold = parseFloat(nextTier.staked_up_to_percent) / 100;
+  
+  // Calculate the target total supply after our new stake
+  // This is crucial - we need to account for how our stake changes the total pool
+  
+  // Calculate what portion of the pool we need to achieve new tier %
+  // For tier threshold T and pool amount P, we need staked amount S where:
+  // S / (P + S) = T
+  // Solving for S: S = T * P / (1 - T)
+  
+  // Important: Include the FEE_RATE in the calculation
+  // If there's a 0.3% fee, we need to stake more to reach the same effective amount
+  
+  let totalAmountNeeded = 0;
+  
+  // Avoid division by zero if nextThreshold is 1 (100%)
+  if (nextThreshold < 1) {
+    totalAmountNeeded = (nextThreshold * totalPoolAmount) / (1 - nextThreshold);
+  } else {
+    // If next threshold is 100%, would need infinite stake (practically impossible)
+    totalAmountNeeded = Number.MAX_SAFE_INTEGER;
+  }
+  
+  // Calculate additional amount needed above current stake
+  let additionalRaw = Math.max(0, totalAmountNeeded - currentStakedAmount);
+  
+  // Account for the fee - if we stake X, only (1-fee)*X gets credited
+  // So we need to stake X/(1-fee) to get X credited
+  const additionalWithFee = additionalRaw > 0 
+    ? additionalRaw / (1 - FEE_RATE) 
+    : 0;
+  
+  // Round to appropriate number of decimal places
+  const multiplier = Math.pow(10, decimals);
+  totalAmountNeeded = Math.ceil(totalAmountNeeded * multiplier) / multiplier;
+  const additionalNeeded = Math.ceil(additionalWithFee * multiplier) / multiplier;
+  
+  return { totalNeeded: totalAmountNeeded, additionalNeeded };
 };
 
 /**
- * Calculate tier progress and related metrics
- * This function determines a user's progress toward the next tier
- * and calculates how much more they need to stake to reach it
+ * Calculates tier progress and safely answers "how much more to next tier?"
  */
 export const calculateTierProgress = (
   stakedAmount: string,
@@ -190,117 +136,87 @@ export const calculateTierProgress = (
       return null;
     }
 
-    // Calculate current percentage (with high precision)
+    // Calculate current percentage with precise decimals
     const stakedPercent = (stakedValue / totalValue) * 100;
-    console.log(`[TierCalc] ${stakedValue.toFixed(8)} is ${stakedPercent.toFixed(6)}% of ${totalValue.toFixed(8)}`);
     
-    // Use determineTier to get current tier consistently
+    // Determine current tier based on percentage
     const currentTier = determineTier(stakedAmount, totalStaked, tiers);
-    console.log(`[TierCalc] Current tier: ${currentTier.tier} (${currentTier.weight}x)`);
     
-    // Sort tiers by percentage threshold (ascending)
+    // Sort tiers by percentage threshold
     const sortedTiers = [...tiers].sort((a, b) => 
       parseFloat(a.staked_up_to_percent) - parseFloat(b.staked_up_to_percent)
     );
     
-    // Find current tier index in sorted array
+    // Find current tier index
     const currentTierIndex = sortedTiers.findIndex(t => t.tier === currentTier.tier);
     if (currentTierIndex === -1) {
-      console.warn(`[TierCalc] Could not find current tier ${currentTier.tier} in sorted tiers`);
+      console.warn('Could not find current tier in sorted tiers');
       return null;
     }
     
-    // Next tier is next in sorted array (if available)
+    // Next tier is the next in sorted array
     const nextTierIndex = currentTierIndex + 1;
     const nextTier = nextTierIndex < sortedTiers.length 
       ? sortedTiers[nextTierIndex] 
       : undefined;
-    console.log(`[TierCalc] Next tier: ${nextTier ? nextTier.tier : 'None (at highest tier)'}`);
     
-    // Previous tier is previous in sorted array (if available)
+    // Previous tier is previous in sorted array
     const prevTierIndex = currentTierIndex - 1;
     const prevTier = prevTierIndex >= 0 
       ? sortedTiers[prevTierIndex] 
       : undefined;
 
-    // Get tier thresholds (as percentages)
+    // Get tier thresholds
     const currentTierThreshold = parseFloat(currentTier.staked_up_to_percent);
     const nextTierThreshold = nextTier ? parseFloat(nextTier.staked_up_to_percent) : 100;
     
-    // Calculate progress toward next tier with high precision
+    // Calculate progress percentage toward next tier
     let progress = 0;
-    
     if (nextTier) {
-      // Calculate range between current tier threshold and next tier threshold
       const rangeSize = nextTierThreshold - currentTierThreshold;
-      
-      if (rangeSize > 0) {
-        progress = ((stakedPercent - currentTierThreshold) / rangeSize) * 100;
-        progress = Math.min(100, Math.max(0, progress)); // Clamp to 0-100 range
-      }
-      console.log(`[TierCalc] Progress: ${progress.toFixed(2)}% to ${nextTier.tier} (${stakedPercent.toFixed(6)}% between ${currentTierThreshold}% and ${nextTierThreshold}%)`);
+      progress = rangeSize > 0 
+        ? ((stakedPercent - currentTierThreshold) / rangeSize) * 100
+        : 100;
+      progress = Math.min(100, Math.max(0, progress)); // Clamp between 0-100
     } else {
-      // At max tier
-      progress = 100;
-      console.log(`[TierCalc] At max tier (${currentTier.tier})`);
+      progress = 100; // At max tier
     }
 
-    // Calculate amount needed for next tier with precise decimal math
+    // Calculate amount needed for next tier with CORRECTED calculation
+    // This is where the main fix happens
     let totalAmountForNext: number | undefined;
     let additionalAmountNeeded: number | undefined;
 
     if (nextTier) {
-      // Get the next tier threshold plus buffer
-      const nextTierThresholdDecimal = nextTierThreshold / 100;
-      const buffer = 0.005; // 0.5 percentage points buffer (not 5%!)
-      const targetRatio = nextTierThresholdDecimal + buffer;
+      const calculation = calculateRequiredForNextTier(
+        stakedValue, 
+        totalValue, 
+        currentTier, 
+        nextTier,
+        decimals
+      );
       
-      if (targetRatio < 1) {
-        // The correct formula to calculate amount needed:
-        // (S + X) / (T + X) = targetRatio
-        // Solved for X: X = (T*targetRatio - S) / (1 - targetRatio)
-        const additionalRaw = (totalValue * targetRatio - stakedValue) / (1 - targetRatio);
-        
-        // Ensure it's not negative and apply precision
-        const adjustedAmount = Math.max(0, additionalRaw);
-        
-        // Apply fee adjustment (0.3%)
-        additionalAmountNeeded = adjustedAmount / (1 - FEE_RATE);
-        
-        // Apply precision and round up slightly to ensure we clear the threshold
-        additionalAmountNeeded = Math.ceil(additionalAmountNeeded * Math.pow(10, decimals)) / Math.pow(10, decimals);
-        
-        // Calculate total amount after staking (what will end up in user's stake)
-        totalAmountForNext = stakedValue + (additionalAmountNeeded * (1 - FEE_RATE));
-        
-        console.log(`[TierCalc] Need ${additionalAmountNeeded.toFixed(decimals)} ${symbol} more to reach ${nextTier.tier} with buffer`);
-        console.log(`[TierCalc] Total after staking: ${totalAmountForNext.toFixed(decimals)} ${symbol}`);
-      } else {
-        // Edge case: target ratio is >= 100%
-        additionalAmountNeeded = undefined;
-        totalAmountForNext = undefined;
-      }
+      totalAmountForNext = calculation.totalNeeded;
+      additionalAmountNeeded = calculation.additionalNeeded;
     }
 
-    // Calculate required amount for current tier with high precision
+    // Calculate safe unstake amount
     const prevTierThreshold = prevTier ? parseFloat(prevTier.staked_up_to_percent) / 100 : 0;
-    const requiredForCurrent = prevTierThreshold * totalValue;
+    
+    // For the safe unstake calculation, first determine min amount needed to maintain current tier
+    const requiredForCurrent = (prevTierThreshold * totalValue) / (1 - prevTierThreshold);
+    const safeUnstakeAmount = Math.max(0, stakedValue - requiredForCurrent);
+    
+    // Round to appropriate number of decimal places
+    const multiplier = Math.pow(10, decimals);
+    const safeUnstakeRounded = Math.floor(safeUnstakeAmount * multiplier) / multiplier;
 
-    // Calculate safe unstake amount properly
-    const safeUnstakeAmount = calculateSafeUnstakeAmount(
-      stakedAmount,
-      totalStaked,
-      tiers,
-      currentTier
-    );
-
-    // Return comprehensive tier progress information
     return {
       currentTier,
       nextTier,
       prevTier,
       progress,
-      requiredForCurrent,
+      requiredForCurrent: prevTierThreshold * totalValue,
       totalStaked,
       stakedAmount,
       currentStakedAmount: stakedValue,
@@ -308,7 +224,7 @@ export const calculateTierProgress = (
       totalAmountForNext,
       additionalAmountNeeded,
       weight: parseFloat(currentTier.weight),
-      safeUnstakeAmount
+      safeUnstakeAmount: safeUnstakeRounded
     };
   } catch (error) {
     console.error('Error in calculateTierProgress:', error);
@@ -317,23 +233,7 @@ export const calculateTierProgress = (
 };
 
 /**
- * Get display name for a tier
- */
-export const getTierDisplayName = (tierKey: string): string => {
-  return TIER_CONFIG[tierKey.toLowerCase()]?.displayName || tierKey;
-};
-
-/**
- * Get weight multiplier for a tier
- */
-export const getTierWeight = (tierKey: string): string => {
-  return TIER_CONFIG[tierKey.toLowerCase()]?.weight || '1.0';
-};
-
-/**
- * Check if a user can upgrade to a higher tier
- * This occurs when their percentage stake would put them in a higher tier
- * than the one they're currently assigned
+ * Determines if a user can upgrade to next tier
  */
 export const isTierUpgradeAvailable = (
   stakedAmount: string,
@@ -350,23 +250,44 @@ export const isTierUpgradeAvailable = (
     // Find current tier index
     const currentTierIndex = sortedTiers.findIndex(t => t.tier === currentTier.tier);
     
-    // If already at max tier, cannot upgrade
+    // Already at max tier?
     if (currentTierIndex >= sortedTiers.length - 1) {
       return false;
     }
     
-    // Determine tier based on actual staked percentage
+    // Calculate where user should be based on current percentages
     const actualTier = determineTier(stakedAmount, totalStaked, tiers);
-    
-    // If actual tier is higher than current tier, upgrade is available
     const actualTierIndex = sortedTiers.findIndex(t => t.tier === actualTier.tier);
     
-    const canUpgrade = actualTierIndex > currentTierIndex;
-    console.log(`Tier upgrade available: ${canUpgrade} (current: ${currentTier.tier}, actual: ${actualTier.tier})`);
-    
-    return canUpgrade;
+    // If actual tier would be higher than current, upgrade is available
+    return actualTierIndex > currentTierIndex;
   } catch (error) {
     console.error('Error checking tier upgrade availability:', error);
     return false;
   }
+};
+
+// Helper functions
+export const getTierDisplayName = (tierKey: string): string => {
+  return TIER_CONFIG[tierKey.toLowerCase()]?.displayName || tierKey;
+};
+
+export const getTierWeight = (tierKey: string): string => {
+  return TIER_CONFIG[tierKey.toLowerCase()]?.weight || '1.0';
+};
+
+export const getTierConfig = (tier: string) => {
+  const config = TIER_CONFIG[tier.toLowerCase()] || TIER_CONFIG.a;
+  return config.style
+    ? {
+        ...config.style,
+        icon: config.icon
+      }
+    : {
+        color: 'text-slate-500',
+        bgColor: 'bg-slate-500/10',
+        borderColor: 'border-slate-500/20',
+        progressColor: 'bg-slate-500',
+        icon: config.icon
+      };
 };
