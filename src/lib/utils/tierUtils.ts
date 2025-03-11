@@ -142,29 +142,33 @@ export const calculateSafeUnstakeAmount = (
     }
     
     // Get the previous tier's threshold (one tier down)
-    const prevTierIndex = currentTierIndex - 1;
-    const prevTier = sortedTiers[prevTierIndex];
-    const prevTierThreshold = parseFloat(prevTier.staked_up_to_percent) / 100;
-    
-    // Calculate maximum unstake amount to stay above previous tier's threshold
-    // Using the formula: (stakedValue - x) / (totalValue - x) = prevTierThreshold
-    // Solved for x: x = (stakedValue - prevTierThreshold * totalValue) / (1 - prevTierThreshold)
-    const safeUnstakeAmount = (stakedValue - prevTierThreshold * totalValue) / (1 - prevTierThreshold);
-    
-    // Apply a safety margin to prevent edge cases (5%)
-    const safetyFactor = 0.05; // 5% safety margin 
-    const finalSafeAmount = safeUnstakeAmount * (1 - safetyFactor);
-    
-    console.log(`Safe unstake calculation:`, {
-      currentTier: currentTier.tier_name || currentTier.tier,
-      prevTier: prevTier.tier_name || prevTier.tier,
-      currentStake: stakedValue.toFixed(8),
-      prevTierThreshold: (prevTierThreshold * 100).toFixed(4) + '%',
-      rawSafeAmount: safeUnstakeAmount.toFixed(8),
-      safeAmountWithMargin: finalSafeAmount.toFixed(8)
-    });
-    
-    return Math.max(0, applyPrecision(finalSafeAmount, decimals));
+// Get the previous tier's threshold (one tier down)
+const prevTierIndex = currentTierIndex - 1;
+const prevTier = sortedTiers[prevTierIndex];
+const prevTierThreshold = parseFloat(prevTier.staked_up_to_percent) / 100;
+
+// Add a buffer to the previous tier's threshold
+const BUFFER_PERCENT = 0.05; // 5% buffer
+const targetPercentage = prevTierThreshold + BUFFER_PERCENT;
+
+// Calculate safe unstake amount using the formula:
+// (S - X) / (T - X) = targetPercentage
+// Solved for X: X = (S - targetPercentage * T) / (1 - targetPercentage)
+const rawSafeUnstakeAmount = (stakedValue - targetPercentage * totalValue) / (1 - targetPercentage);
+
+// Ensure it's not negative and apply precision
+const safeUnstakeAmount = Math.max(0, applyPrecision(rawSafeUnstakeAmount, decimals));
+
+console.log(`Safe unstake calculation:`, {
+  currentTier: currentTier.tier_name || currentTier.tier,
+  prevTier: prevTier.tier_name || prevTier.tier,
+  currentStake: stakedValue.toFixed(decimals),
+  prevTierThreshold: (prevTierThreshold * 100).toFixed(4) + '%',
+  targetPercentage: (targetPercentage * 100).toFixed(4) + '%',
+  safeUnstakeAmount: safeUnstakeAmount.toFixed(decimals)
+});
+
+return safeUnstakeAmount;
   } catch (error) {
     console.error('Error calculating safe unstake amount:', error);
     return 0;
@@ -246,35 +250,41 @@ export const calculateTierProgress = (
       console.log(`[TierCalc] At max tier (${currentTier.tier})`);
     }
 
-    // Calculate amount needed for next tier with precise decimal math
-    let totalAmountForNext: number | undefined;
-    let additionalAmountNeeded: number | undefined;
+// Calculate amount needed for next tier with precise decimal math
+let totalAmountForNext: number | undefined;
+let additionalAmountNeeded: number | undefined;
 
-    if (nextTier) {
-      // Calculate total amount needed for next tier threshold
-      const nextTierThresholdDecimal = nextTierThreshold / 100;
-      
-      if (nextTierThresholdDecimal < 1) { // Avoid division by zero
-        // Calculate with high precision
-        totalAmountForNext = totalValue * (nextTierThresholdDecimal / (1 - nextTierThresholdDecimal));
-        
-        // Adjust for fee if needed for additional amount
-        const additionalRaw = Math.max(0, totalAmountForNext - stakedValue);
-        const FEE_RATE = 0.003; // 0.3% fee
-        const additionalWithFee = additionalRaw > 0 
-          ? additionalRaw / (1 - FEE_RATE) 
-          : 0;
-        
-        additionalAmountNeeded = Math.max(0, additionalWithFee);
-        
-        console.log(`[TierCalc] Need ${additionalAmountNeeded.toFixed(8)} ${symbol} more to reach ${nextTier.tier} (${nextTierThreshold}%)`);
-        console.log(`[TierCalc] Total needed: ${totalAmountForNext.toFixed(8)} ${symbol}`);
-      } else {
-        // Edge case: if nextTierThreshold is 100%
-        totalAmountForNext = totalValue;
-        additionalAmountNeeded = Math.max(0, totalValue - stakedValue);
-      }
+if (nextTier) {
+  // Calculate total amount needed for next tier threshold plus 5% buffer
+  const nextTierThresholdDecimal = nextTierThreshold / 100; 
+  const BUFFER_PERCENT = 0.05; // 5% buffer
+  const targetPercentage = nextTierThresholdDecimal + BUFFER_PERCENT;
+  
+  if (targetPercentage < 1) {
+    // Calculate additional amount needed using the correct formula:
+    // (S + X) / (T + X) = targetPercentage
+    // Solved for X: X = (S - targetPercentage * T) / (targetPercentage - 1)
+    const rawAdditionalNeeded = (stakedValue - targetPercentage * totalValue) / (targetPercentage - 1);
+    
+    // Ensure it's not negative and apply precision
+    additionalAmountNeeded = Math.max(0, applyPrecision(rawAdditionalNeeded, decimals));
+    
+    // Calculate total amount needed
+    totalAmountForNext = stakedValue + additionalAmountNeeded;
+    
+    // Adjust for fee if needed (0.3% fee)
+    if (additionalAmountNeeded > 0) {
+      const FEE_RATE = 0.003;
+      additionalAmountNeeded = applyPrecision(additionalAmountNeeded / (1 - FEE_RATE), decimals);
     }
+    
+    console.log(`[TierCalc] Need ${additionalAmountNeeded.toFixed(decimals)} ${symbol} more to reach ${nextTier.tier} with 5% buffer`);
+  } else {
+    // Edge case: if targetPercentage is >= 100%
+    totalAmountForNext = undefined;
+    additionalAmountNeeded = undefined;
+  }
+}
 
     // Calculate required amount for current tier with high precision
     const prevTierThreshold = prevTier ? parseFloat(prevTier.staked_up_to_percent) / 100 : 0;
