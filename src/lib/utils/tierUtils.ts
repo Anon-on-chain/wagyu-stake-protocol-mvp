@@ -141,34 +141,31 @@ export const calculateSafeUnstakeAmount = (
       return Math.max(0, stakedValue - 0.00000001);
     }
     
-    // Get the previous tier's threshold (one tier down)
-// Get the previous tier's threshold (one tier down)
-const prevTierIndex = currentTierIndex - 1;
-const prevTier = sortedTiers[prevTierIndex];
-const prevTierThreshold = parseFloat(prevTier.staked_up_to_percent) / 100;
+    // Get the previous tier's threshold plus buffer
+    const prevTierIndex = currentTierIndex - 1;
+    const prevTier = sortedTiers[prevTierIndex];
+    const prevTierThreshold = parseFloat(prevTier.staked_up_to_percent) / 100;
+    const buffer = 0.05; // 5% buffer
+    const targetRatio = prevTierThreshold + buffer;
 
-// Add a buffer to the previous tier's threshold
-const BUFFER_PERCENT = 0.05; // 5% buffer
-const targetPercentage = prevTierThreshold + BUFFER_PERCENT;
+    // Correct formula for calculating safe unstake amount:
+    // (S - X) / (T - X) = targetRatio
+    // Solved for X: X = (S - targetRatio * T) / (1 - targetRatio)
+    const safeUnstakeAmount = (stakedValue - targetRatio * totalValue) / (1 - targetRatio);
 
-// Calculate safe unstake amount using the formula:
-// (S - X) / (T - X) = targetPercentage
-// Solved for X: X = (S - targetPercentage * T) / (1 - targetPercentage)
-const rawSafeUnstakeAmount = (stakedValue - targetPercentage * totalValue) / (1 - targetPercentage);
+    // Apply precision and round down slightly to ensure we stay above threshold
+    const finalAmount = Math.max(0, Math.floor(safeUnstakeAmount * Math.pow(10, decimals)) / Math.pow(10, decimals));
 
-// Ensure it's not negative and apply precision
-const safeUnstakeAmount = Math.max(0, applyPrecision(rawSafeUnstakeAmount, decimals));
+    console.log(`Safe unstake calculation:`, {
+      currentTier: currentTier.tier_name || currentTier.tier,
+      prevTier: prevTier.tier_name || prevTier.tier,
+      currentStake: stakedValue.toFixed(decimals),
+      prevTierThreshold: (prevTierThreshold * 100).toFixed(4) + '%',
+      targetRatio: (targetRatio * 100).toFixed(4) + '%',
+      safeUnstakeAmount: finalAmount.toFixed(decimals)
+    });
 
-console.log(`Safe unstake calculation:`, {
-  currentTier: currentTier.tier_name || currentTier.tier,
-  prevTier: prevTier.tier_name || prevTier.tier,
-  currentStake: stakedValue.toFixed(decimals),
-  prevTierThreshold: (prevTierThreshold * 100).toFixed(4) + '%',
-  targetPercentage: (targetPercentage * 100).toFixed(4) + '%',
-  safeUnstakeAmount: safeUnstakeAmount.toFixed(decimals)
-});
-
-return safeUnstakeAmount;
+    return finalAmount;
   } catch (error) {
     console.error('Error calculating safe unstake amount:', error);
     return 0;
@@ -180,8 +177,6 @@ return safeUnstakeAmount;
  * This function determines a user's progress toward the next tier
  * and calculates how much more they need to stake to reach it
  */
-// tierUtils.ts
-
 export const calculateTierProgress = (
   stakedAmount: string,
   totalStaked: string,
@@ -250,49 +245,51 @@ export const calculateTierProgress = (
       console.log(`[TierCalc] At max tier (${currentTier.tier})`);
     }
 
-// Calculate amount needed for next tier with precise decimal math
-let totalAmountForNext: number | undefined;
-let additionalAmountNeeded: number | undefined;
+    // Calculate amount needed for next tier with precise decimal math
+    let totalAmountForNext: number | undefined;
+    let additionalAmountNeeded: number | undefined;
 
-if (nextTier) {
-  // Calculate total amount needed for next tier threshold plus 5% buffer
-  const nextTierThresholdDecimal = nextTierThreshold / 100; 
-  const BUFFER_PERCENT = 0.05; // 5% buffer
-  const targetPercentage = nextTierThresholdDecimal + BUFFER_PERCENT;
-  
-  if (targetPercentage < 1) {
-    // Calculate additional amount needed using the correct formula:
-    // (S + X) / (T + X) = targetPercentage
-    // Solved for X: X = (S - targetPercentage * T) / (targetPercentage - 1)
-    const rawAdditionalNeeded = (stakedValue - targetPercentage * totalValue) / (targetPercentage - 1);
-    
-    // Ensure it's not negative and apply precision
-    additionalAmountNeeded = Math.max(0, applyPrecision(rawAdditionalNeeded, decimals));
-    
-    // Calculate total amount needed
-    totalAmountForNext = stakedValue + additionalAmountNeeded;
-    
-    // Adjust for fee if needed (0.3% fee)
-    if (additionalAmountNeeded > 0) {
-      const FEE_RATE = 0.003;
-      additionalAmountNeeded = applyPrecision(additionalAmountNeeded / (1 - FEE_RATE), decimals);
+    if (nextTier) {
+      // Get the next tier threshold plus buffer
+      const nextTierThresholdDecimal = nextTierThreshold / 100;
+      const buffer = 0.05; // 5% buffer
+      const targetRatio = nextTierThresholdDecimal + buffer;
+      
+      if (targetRatio < 1) {
+        // The correct formula to calculate amount needed:
+        // (S + X) / (T + X) = targetRatio
+        // Solved for X: X = (T*targetRatio - S) / (1 - targetRatio)
+        const additionalRaw = (totalValue * targetRatio - stakedValue) / (1 - targetRatio);
+        
+        // Apply fee adjustment (0.3%)
+        additionalAmountNeeded = Math.max(0, additionalRaw / (1 - FEE_RATE));
+        
+        // Apply precision and round up slightly to ensure we clear the threshold
+        additionalAmountNeeded = Math.ceil(additionalAmountNeeded * Math.pow(10, decimals)) / Math.pow(10, decimals);
+        
+        // Calculate total amount after staking
+        totalAmountForNext = stakedValue + additionalAmountNeeded * (1 - FEE_RATE);
+        
+        console.log(`[TierCalc] Need ${additionalAmountNeeded.toFixed(decimals)} ${symbol} more to reach ${nextTier.tier} with 5% buffer`);
+        console.log(`[TierCalc] Total after staking: ${totalAmountForNext.toFixed(decimals)} ${symbol}`);
+      } else {
+        // Edge case: target ratio is >= 100%
+        additionalAmountNeeded = undefined;
+        totalAmountForNext = undefined;
+      }
     }
-    
-    console.log(`[TierCalc] Need ${additionalAmountNeeded.toFixed(decimals)} ${symbol} more to reach ${nextTier.tier} with 5% buffer`);
-  } else {
-    // Edge case: if targetPercentage is >= 100%
-    totalAmountForNext = undefined;
-    additionalAmountNeeded = undefined;
-  }
-}
 
     // Calculate required amount for current tier with high precision
     const prevTierThreshold = prevTier ? parseFloat(prevTier.staked_up_to_percent) / 100 : 0;
     const requiredForCurrent = prevTierThreshold * totalValue;
 
-    // Calculate safe unstake amount
-    const safeUnstakeAmount = Math.max(0, stakedValue - requiredForCurrent);
-    console.log(`[TierCalc] Safe unstake: ${safeUnstakeAmount.toFixed(8)} ${symbol}`);
+    // Calculate safe unstake amount properly
+    const safeUnstakeAmount = calculateSafeUnstakeAmount(
+      stakedAmount,
+      totalStaked,
+      tiers,
+      currentTier
+    );
 
     // Return comprehensive tier progress information
     return {
@@ -308,7 +305,7 @@ if (nextTier) {
       totalAmountForNext,
       additionalAmountNeeded,
       weight: parseFloat(currentTier.weight),
-      safeUnstakeAmount // Add this field to the TierProgress interface
+      safeUnstakeAmount
     };
   } catch (error) {
     console.error('Error in calculateTierProgress:', error);
