@@ -145,7 +145,7 @@ export const calculateSafeUnstakeAmount = (
     const prevTierIndex = currentTierIndex - 1;
     const prevTier = sortedTiers[prevTierIndex];
     const prevTierThreshold = parseFloat(prevTier.staked_up_to_percent) / 100;
-    const buffer = 0.05; // 5% buffer
+    const buffer = 0.005; // 0.5 percentage points buffer (not 5%!)
     const targetRatio = prevTierThreshold + buffer;
 
     // Correct formula for calculating safe unstake amount:
@@ -252,7 +252,7 @@ export const calculateTierProgress = (
     if (nextTier) {
       // Get the next tier threshold plus buffer
       const nextTierThresholdDecimal = nextTierThreshold / 100;
-      const buffer = 0.05; // 5% buffer
+      const buffer = 0.005; // 0.5 percentage points buffer (not 5%!)
       const targetRatio = nextTierThresholdDecimal + buffer;
       
       if (targetRatio < 1) {
@@ -261,16 +261,19 @@ export const calculateTierProgress = (
         // Solved for X: X = (T*targetRatio - S) / (1 - targetRatio)
         const additionalRaw = (totalValue * targetRatio - stakedValue) / (1 - targetRatio);
         
+        // Ensure it's not negative and apply precision
+        const adjustedAmount = Math.max(0, additionalRaw);
+        
         // Apply fee adjustment (0.3%)
-        additionalAmountNeeded = Math.max(0, additionalRaw / (1 - FEE_RATE));
+        additionalAmountNeeded = adjustedAmount / (1 - FEE_RATE);
         
         // Apply precision and round up slightly to ensure we clear the threshold
         additionalAmountNeeded = Math.ceil(additionalAmountNeeded * Math.pow(10, decimals)) / Math.pow(10, decimals);
         
-        // Calculate total amount after staking
-        totalAmountForNext = stakedValue + additionalAmountNeeded * (1 - FEE_RATE);
+        // Calculate total amount after staking (what will end up in user's stake)
+        totalAmountForNext = stakedValue + (additionalAmountNeeded * (1 - FEE_RATE));
         
-        console.log(`[TierCalc] Need ${additionalAmountNeeded.toFixed(decimals)} ${symbol} more to reach ${nextTier.tier} with 5% buffer`);
+        console.log(`[TierCalc] Need ${additionalAmountNeeded.toFixed(decimals)} ${symbol} more to reach ${nextTier.tier} with buffer`);
         console.log(`[TierCalc] Total after staking: ${totalAmountForNext.toFixed(decimals)} ${symbol}`);
       } else {
         // Edge case: target ratio is >= 100%
