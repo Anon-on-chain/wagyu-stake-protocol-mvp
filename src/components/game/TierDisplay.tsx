@@ -1,3 +1,4 @@
+// src/components/game/TierDisplay.tsx
 import React, { useState, useMemo } from 'react';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { Progress } from '@/components/ui/progress';
@@ -16,29 +17,8 @@ import { getTierConfig, calculateSafeUnstakeAmount, getTierDisplayName, getTierW
 import { formatNumber } from '@/lib/utils/formatUtils';
 import { parseTokenString } from '@/lib/utils/tokenUtils';
 import { cn } from '@/lib/utils';
-import { Info, ChevronDown } from 'lucide-react';
-
-// Import TierInfo component if it exists, otherwise create a minimal placeholder
-const TierInfo = ({ open, onOpenChange }: { open: boolean, onOpenChange: (open: boolean) => void }) => (
-  <Dialog open={open} onOpenChange={onOpenChange}>
-    <DialogContent className="bg-slate-900 border-slate-700/50 text-slate-100">
-      <DialogHeader>
-        <DialogTitle>About Tier Levels</DialogTitle>
-        <DialogDescription className="text-slate-400">
-          Tiers are calculated based on your percentage of the total staked amount
-        </DialogDescription>
-      </DialogHeader>
-      <div className="space-y-2">
-        <p className="text-sm text-slate-300">
-          Your tier level determines your reward multiplier. The higher your percentage of the total staked tokens, the higher your tier level.
-        </p>
-        <p className="text-sm text-slate-300">
-          As you stake more tokens, your tier level can increase, giving you a higher reward multiplier.
-        </p>
-      </div>
-    </DialogContent>
-  </Dialog>
-);
+import { Info, ChevronDown, AlertCircle } from 'lucide-react';
+import { TierInfo } from './TierInfo';
 
 interface TierDisplayProps {
   tierProgress?: TierProgress;
@@ -66,10 +46,17 @@ export const TierDisplay: React.FC<TierDisplayProps> = ({
     return parseTokenString(stakedData.staked_quantity);
   }, [stakedData]);
   
+  // Get the safe unstake amount from tierProgress or calculate it manually
   const safeUnstakeAmount = useMemo(() => {
+    if (tierProgress?.safeUnstakeAmount !== undefined) {
+      return tierProgress.safeUnstakeAmount;
+    }
+    
     if (!stakedData?.staked_quantity || !totalStaked || !allTiers || !tierProgress?.currentTier) {
       return 0;
     }
+    
+    // Fallback calculation if tierProgress doesn't include it
     return calculateSafeUnstakeAmount(
       stakedData.staked_quantity,
       totalStaked,
@@ -78,8 +65,14 @@ export const TierDisplay: React.FC<TierDisplayProps> = ({
     );
   }, [stakedData, totalStaked, allTiers, tierProgress]);
 
-  // Identify the next tier by finding the next higher tier in the sorted tiers list
+  // Find next tier based on tierProgress or by calculating from tierList
   const nextTierKey = useMemo(() => {
+    // Use tierProgress.nextTier if available
+    if (tierProgress?.nextTier) {
+      return tierProgress.nextTier.tier;
+    }
+    
+    // Calculate manually if needed
     if (!stakedData || !allTiers) return null;
     
     // Sort tiers by percentage threshold
@@ -96,7 +89,7 @@ export const TierDisplay: React.FC<TierDisplayProps> = ({
     }
     
     return null;
-  }, [stakedData, allTiers]);
+  }, [stakedData, allTiers, tierProgress]);
 
   if (isLoading || !tierProgress || !stakedData) {
     return (
@@ -125,14 +118,25 @@ export const TierDisplay: React.FC<TierDisplayProps> = ({
     totalAmountForNext,
     additionalAmountNeeded,
     symbol,
-    progress
+    progress = 0
   } = tierProgress;
   
-  // Get the actual next tier (not what might be incorrectly set in tierProgress)
-  const actualNextTier = allTiers?.find(t => t.tier === nextTierKey); 
-  const nextTierStyle = actualNextTier ? getTierConfig(actualNextTier.tier) : null;
+  // Get next tier from tierProgress or find it manually
+  const nextTier = tierProgress.nextTier || (nextTierKey ? allTiers?.find(t => t.tier === nextTierKey) : undefined);
+  
+  const nextTierStyle = nextTier ? getTierConfig(nextTier.tier) : null;
   const currentMultiplier = parseFloat(getTierWeight(stakedData.tier)).toFixed(3);
   const decimals = tokenInfo.decimals;
+
+  // Format additional needed amount
+  const formattedAdditionalNeeded = additionalAmountNeeded !== undefined
+    ? formatNumber(additionalAmountNeeded, decimals)
+    : '0';
+    
+  // Format total needed amount
+  const formattedTotalNeeded = totalAmountForNext !== undefined
+    ? formatNumber(totalAmountForNext, decimals)
+    : '0';
 
   return (
     <>
@@ -195,9 +199,9 @@ export const TierDisplay: React.FC<TierDisplayProps> = ({
               )}
             />
             <div className="flex justify-between items-center text-xs">
-<span className="text-slate-300">
-  Safe Unstake: {formatNumber(tierProgress.safeUnstakeAmount, decimals)} {symbol}
-</span>
+              <span className="text-slate-300">
+                Safe Unstake: {formatNumber(safeUnstakeAmount, decimals)} {symbol}
+              </span>
               <span className={cn(
                 "font-medium",
                 isUpgradeAvailable ? "text-green-400" : "text-slate-300"
@@ -231,11 +235,11 @@ export const TierDisplay: React.FC<TierDisplayProps> = ({
                 </p>
               </div>
             </div>
-          ) : actualNextTier && typeof additionalAmountNeeded === 'number' && (
+          ) : nextTier && (
             <div className="bg-slate-800/30 rounded-lg p-3 md:p-4 border border-slate-700/50">
               <div className="flex items-center justify-between mb-2">
                 <p className="text-slate-300 text-sm">
-                  Progress to {getTierDisplayName(actualNextTier.tier)}
+                  Progress to {getTierDisplayName(nextTier.tier)}
                 </p>
                 {nextTierStyle && (
                   <div className={cn("p-2 rounded-lg", nextTierStyle.bgColor)}>
@@ -246,19 +250,29 @@ export const TierDisplay: React.FC<TierDisplayProps> = ({
               <div className="space-y-2">
                 {totalAmountForNext !== undefined && (
                   <p className="text-sm text-slate-300">
-                    Total needed: {formatNumber(totalAmountForNext, decimals)} {symbol}
+                    Total needed: {formattedTotalNeeded} {symbol}
                   </p>
                 )}
                 <p className={cn(
                   "font-medium text-sm",
-                  additionalAmountNeeded <= 0 ? "text-green-400" : "text-slate-300"
+                  additionalAmountNeeded !== undefined && additionalAmountNeeded <= 0 
+                    ? "text-green-400" 
+                    : "text-slate-300"
                 )}>
-                  {additionalAmountNeeded <= 0 
+                  {additionalAmountNeeded !== undefined && additionalAmountNeeded <= 0 
                     ? 'Ready to Advance!'
-                    : `Need ${formatNumber(additionalAmountNeeded, decimals)} ${symbol} more`
+                    : `Need ${formattedAdditionalNeeded} ${symbol} more`
                   }
                 </p>
-                <p className="text-xs text-slate-400">
+                {additionalAmountNeeded !== undefined && additionalAmountNeeded > 0 && (
+                  <div className="bg-amber-500/10 rounded-lg p-2 flex items-start gap-1.5 mt-1">
+                    <AlertCircle className="w-4 h-4 text-amber-400 mt-0.5 flex-shrink-0" />
+                    <p className="text-xs text-amber-200">
+                      These estimates account for the 0.3% staking fee and pool changes
+                    </p>
+                  </div>
+                )}
+                <p className="text-xs text-slate-400 mt-1">
                   Currently staking {formatNumber(currentStakedAmount, decimals)} {symbol}
                 </p>
               </div>
@@ -318,6 +332,3 @@ export const TierDisplay: React.FC<TierDisplayProps> = ({
         open={isInfoDialogOpen}
         onOpenChange={setIsInfoDialogOpen}
       />
-    </>
-  );
-};
