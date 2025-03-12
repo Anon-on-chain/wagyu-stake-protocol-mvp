@@ -97,9 +97,9 @@ export const TierDisplay: React.FC<TierDisplayProps> = ({
         <CardContent className="p-6">
           {isLoading ? (
             <div className="animate-pulse space-y-4">
-              <div className="h-4 bg-slate-700 rounded w-1/4" />
-              <div className="h-4 bg-slate-700 rounded w-1/2" />
-              <div className="h-4 bg-slate-700 rounded w-1/3" />
+              <div className="h-4 bg-slate-700 rounded w-1/4"></div>
+              <div className="h-4 bg-slate-700 rounded w-1/2"></div>
+              <div className="h-4 bg-slate-700 rounded w-1/3"></div>
             </div>
           ) : (
             <p className="text-center text-slate-400">No tier data available</p>
@@ -332,3 +332,8 @@ export const TierDisplay: React.FC<TierDisplayProps> = ({
         open={isInfoDialogOpen}
         onOpenChange={setIsInfoDialogOpen}
       />
+    </>
+  );
+};
+
+export default TierDisplay;
