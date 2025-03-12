@@ -91,6 +91,27 @@ export const TierDisplay: React.FC<TierDisplayProps> = ({
     return null;
   }, [stakedData, allTiers, tierProgress]);
 
+  // Process tiers to add percentage ranges for the multiplier dialog
+  const processedTiers = useMemo(() => {
+    if (!allTiers || allTiers.length === 0) return [];
+    
+    // First sort tiers by percentage threshold
+    const sortedTiers = [...allTiers].sort((a, b) => 
+      parseFloat(a.staked_up_to_percent) - parseFloat(b.staked_up_to_percent)
+    );
+    
+    // Then add range information
+    return sortedTiers.map((tier, index) => {
+      const currentThreshold = parseFloat(tier.staked_up_to_percent);
+      const prevThreshold = index > 0 ? parseFloat(sortedTiers[index-1].staked_up_to_percent) : 0;
+      
+      return {
+        ...tier,
+        range: `${prevThreshold.toFixed(2)}% - ${currentThreshold.toFixed(2)}%`
+      };
+    });
+  }, [allTiers]);
+
   if (isLoading || !tierProgress || !stakedData) {
     return (
       <Card className="w-full crystal-bg">
@@ -281,6 +302,7 @@ export const TierDisplay: React.FC<TierDisplayProps> = ({
         </CardContent>
       </Card>
 
+      {/* The updated multiplier dialog with percentage ranges */}
       <Dialog open={isMultiplierDialogOpen} onOpenChange={setMultiplierDialogOpen}>
         <DialogContent className="bg-slate-900 border-slate-700/50 text-slate-100">
           <DialogHeader>
@@ -289,41 +311,60 @@ export const TierDisplay: React.FC<TierDisplayProps> = ({
               Each level provides a different reward multiplier
             </DialogDescription>
           </DialogHeader>
-          <div className="space-y-2 max-h-[60vh] overflow-y-auto pr-2">
-            {allTiers?.map((tier) => {
-              const config = getTierConfig(tier.tier);
-              const TierIcon = config.icon;
-              const isCurrentTier = tier.tier === stakedData.tier;
-              
-              return (
-                <div
-                  key={tier.tier}
-                  className={cn(
-                    "flex items-center justify-between p-3 rounded-lg border transition-all",
-                    isCurrentTier ? config.bgColor : "bg-slate-800/30",
-                    isCurrentTier ? "border-slate-600" : "border-slate-700/50"
-                  )}
-                >
-                  <div className="flex items-center gap-3">
-                    <div className={cn("p-2 rounded-lg", config.bgColor)}>
-                      <TierIcon className={cn("w-4 h-4", config.color)} />
+          
+          {/* Table header */}
+          <div className="grid grid-cols-12 text-xs text-slate-400 px-3 py-1 border-b border-slate-700/30">
+            <div className="col-span-4">Level</div>
+            <div className="col-span-5">Stake Range</div>
+            <div className="col-span-3 text-right">Multiplier</div>
+          </div>
+          
+          {/* Scrollable tier list */}
+          <div className="max-h-[60vh] overflow-y-auto pr-2">
+            <div className="space-y-1 pt-1">
+              {processedTiers.map((tier) => {
+                const config = getTierConfig(tier.tier);
+                const TierIcon = config.icon;
+                const isCurrentTier = tier.tier === stakedData.tier;
+                
+                return (
+                  <div
+                    key={tier.tier}
+                    className={cn(
+                      "grid grid-cols-12 items-center p-2 rounded-lg border transition-all",
+                      isCurrentTier ? config.bgColor : "bg-slate-800/30",
+                      isCurrentTier ? "border-slate-600" : "border-slate-700/50"
+                    )}
+                  >
+                    {/* Level column */}
+                    <div className="col-span-4 flex items-center gap-2">
+                      <div className={cn("p-1.5 rounded-lg", config.bgColor)}>
+                        <TierIcon className={cn("w-4 h-4", config.color)} />
+                      </div>
+                      <span className={cn(
+                        "font-medium",
+                        isCurrentTier ? config.color : "text-slate-300"
+                      )}>
+                        {getTierDisplayName(tier.tier)}
+                      </span>
                     </div>
-                    <span className={cn(
-                      "font-medium",
+                    
+                    {/* Percentage range column */}
+                    <div className="col-span-5 text-sm text-slate-300">
+                      {tier.range}
+                    </div>
+                    
+                    {/* Multiplier column */}
+                    <div className={cn(
+                      "col-span-3 text-right font-semibold",
                       isCurrentTier ? config.color : "text-slate-300"
                     )}>
-                      {getTierDisplayName(tier.tier)}
-                    </span>
+                      {parseFloat(tier.weight).toFixed(3)}x
+                    </div>
                   </div>
-                  <span className={cn(
-                    "font-semibold",
-                    isCurrentTier ? config.color : "text-slate-300"
-                  )}>
-                    {parseFloat(tier.weight).toFixed(3)}x
-                  </span>
-                </div>
-              );
-            })}
+                );
+              })}
+            </div>
           </div>
         </DialogContent>
       </Dialog>
