@@ -1,4 +1,4 @@
-// src/lib/utils/tierUtils.ts - Simplified Direct Fix
+// src/lib/utils/tierUtils.ts - Complete with all required functions
 
 import { TierEntity, TierProgress } from '../types/tier';
 import { parseTokenString } from './tokenUtils';
@@ -44,13 +44,16 @@ export const determineTier = (
     // Start with lowest tier
     let selectedTier = sortedTiers[0];
     
-    // Find the highest tier where user's percentage is > threshold
+    // Find the highest tier where user's percentage is <= threshold
     for (let i = 0; i < sortedTiers.length; i++) {
       const tierThreshold = parseFloat(sortedTiers[i].staked_up_to_percent);
       
       // If user percentage is below this threshold
       if (stakedPercent <= tierThreshold) {
-        // We found the boundary - use previous tier
+        // We found the boundary - use previous tier if we're not at the first tier
+        if (i > 0) {
+          return sortedTiers[i-1];
+        }
         return selectedTier;
       }
       
@@ -63,6 +66,66 @@ export const determineTier = (
   } catch (error) {
     console.error('Error determining tier:', error);
     return tiers[0];
+  }
+};
+
+/**
+ * Calculate how much a user can safely unstake without dropping a tier
+ * THIS WAS MISSING - Added to fix build error
+ */
+export const calculateSafeUnstakeAmount = (
+  stakedAmount: string,
+  totalStaked: string,
+  tiers: TierEntity[],
+  currentTier: TierEntity
+): number => {
+  try {
+    const { amount: stakedValue, decimals } = parseTokenString(stakedAmount);
+    const { amount: totalValue } = parseTokenString(totalStaked);
+    
+    if (totalValue === 0 || stakedValue === 0) return 0;
+
+    // Sort tiers by percentage threshold
+    const sortedTiers = [...tiers].sort((a, b) => 
+      parseFloat(a.staked_up_to_percent) - parseFloat(b.staked_up_to_percent)
+    );
+    
+    // Find current tier index
+    const currentTierIndex = sortedTiers.findIndex(t => t.tier === currentTier.tier);
+    
+    // At lowest tier, can unstake almost everything
+    if (currentTierIndex <= 0) {
+      return Math.max(0, stakedValue - 0.00000001);
+    }
+    
+    // Get the previous tier's threshold
+    const prevTierIndex = currentTierIndex - 1;
+    const prevTier = sortedTiers[prevTierIndex];
+    const prevTierThreshold = parseFloat(prevTier.staked_up_to_percent) / 100;
+    
+    // Calculate minimum amount needed to maintain current tier
+    // Formula: minimum = (prevThreshold * totalValue) / (1 - prevThreshold)
+    let minimumAmount;
+    
+    if (prevTierThreshold < 1) {
+      minimumAmount = (prevTierThreshold * totalValue) / (1 - prevTierThreshold);
+    } else {
+      // Edge case if threshold is 100%
+      minimumAmount = stakedValue; // Can't unstake anything
+    }
+    
+    // Calculate safe unstake amount
+    const safeAmount = Math.max(0, stakedValue - minimumAmount);
+    
+    // Apply a 5% safety margin
+    const withMargin = safeAmount * 0.95;
+    
+    // Round to proper decimals
+    const multiplier = Math.pow(10, decimals);
+    return Math.floor(withMargin * multiplier) / multiplier;
+  } catch (error) {
+    console.error('Error calculating safe unstake amount:', error);
+    return 0;
   }
 };
 
@@ -86,7 +149,7 @@ export function calculateAmountForNextTier(
     const nextThreshold = parseFloat(nextTier.staked_up_to_percent) / 100;
     
     // Calculate exact amount needed to reach next tier threshold
-    // Formula: (nextThreshold * (poolTotal - currentStake)) / (1 - nextThreshold)
+    // Formula: (nextThreshold * poolTotal - currentStake) / (1 - nextThreshold)
     const amountForNextTier = (nextThreshold * poolTotal - currentStake) / (1 - nextThreshold);
     
     // Account for fee - if we stake X, only (1-fee)*X gets credited
@@ -185,30 +248,19 @@ export const calculateTierProgress = (
     }
 
     // Calculate safe unstake amount
-    let safeUnstakeAmount = 0;
-    if (prevTier) {
-      // Keep enough to stay above previous tier threshold
-      const prevTierThreshold = parseFloat(prevTier.staked_up_to_percent) / 100;
-      const minimumAmount = (prevTierThreshold * totalValue) / (1 - prevTierThreshold);
-      safeUnstakeAmount = Math.max(0, stakedValue - minimumAmount);
-      
-      // Add small safety margin
-      safeUnstakeAmount *= 0.95;
-    } else {
-      // At lowest tier, can unstake almost everything
-      safeUnstakeAmount = Math.max(0, stakedValue - 0.00000001);
-    }
-    
-    // Round to appropriate number of decimal places
-    const multiplier = Math.pow(10, decimals);
-    const safeUnstakeRounded = Math.floor(safeUnstakeAmount * multiplier) / multiplier;
+    const safeUnstakeAmount = calculateSafeUnstakeAmount(
+      stakedAmount,
+      totalStaked,
+      tiers,
+      currentTier
+    );
 
     return {
       currentTier,
       nextTier,
       prevTier,
       progress,
-      requiredForCurrent: 0, // Not needed
+      requiredForCurrent: 0, // Not needed anymore
       totalStaked,
       stakedAmount,
       currentStakedAmount: stakedValue,
@@ -216,7 +268,7 @@ export const calculateTierProgress = (
       totalAmountForNext,
       additionalAmountNeeded,
       weight: parseFloat(currentTier.weight),
-      safeUnstakeAmount: safeUnstakeRounded
+      safeUnstakeAmount
     };
   } catch (error) {
     console.error('Error in calculateTierProgress:', error);
