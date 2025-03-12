@@ -29,9 +29,6 @@ export function useTierCalculation(
         tier: stakedData.tier
       });
       
-      // Get token decimals from staked amount
-      const { decimals } = parseTokenString(stakedData.staked_quantity);
-      
       // Calculate tier progress
       const progress = calculateTierProgress(
         stakedData.staked_quantity,
@@ -80,27 +77,26 @@ export function useTierCalculation(
             const nextTierThreshold = nextTier ? parseFloat(nextTier.staked_up_to_percent) : 100;
             
             // Calculate progress within current tier
-            let progress = 0;
+            let tierProgress = 0;
             if (nextTier) {
               const rangeSize = nextTierThreshold - userTierThreshold;
-              progress = rangeSize > 0
+              tierProgress = rangeSize > 0
                 ? ((stakedPercent - userTierThreshold) / rangeSize) * 100
                 : 100;
-              progress = Math.min(100, Math.max(0, progress));
+              tierProgress = Math.min(100, Math.max(0, tierProgress));
             } else {
-              progress = 100; // At max tier
+              tierProgress = 100; // At max tier
             }
             
             // Create adjusted tier progress with user's actual tier
-            const adjusted = {
+            // Make a copy of progress and override specific properties
+            return {
               ...progress,
               currentTier: userTier,
               nextTier,
               prevTier,
-              progress
+              progress: tierProgress
             };
-            
-            return adjusted;
           }
         }
       }
