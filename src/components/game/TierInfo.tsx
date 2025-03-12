@@ -1,5 +1,5 @@
 // src/components/game/TierInfo.tsx
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { BarChart, Scale, ArrowBigUp, Gauge, AlertCircle } from 'lucide-react';
 import {
   Dialog,
@@ -7,9 +7,11 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { TIER_CONFIG } from '@/lib/config/tierConfig';
+import { TIER_CONFIG, TIER_KEYS } from '@/lib/config/tierConfig';
 import { cn } from '@/lib/utils';
 import { getTierConfig, getTierDisplayName } from '@/lib/utils/tierUtils';
+import { useContractData } from '@/lib/hooks/useContractData';
+import { TierEntity } from '@/lib/types/tier';
 
 interface TierInfoProps {
   open: boolean;
@@ -20,28 +22,39 @@ const TierInfo: React.FC<TierInfoProps> = ({
   open,
   onOpenChange,
 }) => {
-  // Get all tier keys and sort them by percentage threshold
-  const tierKeys = Object.keys(TIER_CONFIG);
-  const sortedTierKeys = [...tierKeys].sort((a, b) => {
-    const thresholdA = parseFloat(TIER_CONFIG[a].staked_up_to_percent);
-    const thresholdB = parseFloat(TIER_CONFIG[b].staked_up_to_percent);
-    return thresholdA - thresholdB;
-  });
+  const { fetchData } = useContractData();
+  const [tiers, setTiers] = useState<TierEntity[]>([]);
   
-  // Create tier data with percentage ranges
-  const tiers = sortedTierKeys.map((key, index) => {
-    const tier = TIER_CONFIG[key];
-    const currentThreshold = parseFloat(tier.staked_up_to_percent);
+  // Load tiers data when component mounts
+  useEffect(() => {
+    const loadTiers = async () => {
+      try {
+        const data = await fetchData();
+        if (data?.tiers) {
+          // Sort tiers by percentage threshold
+          const sortedTiers = [...data.tiers].sort((a, b) => 
+            parseFloat(a.staked_up_to_percent) - parseFloat(b.staked_up_to_percent)
+          );
+          setTiers(sortedTiers);
+        }
+      } catch (error) {
+        console.error('Failed to load tiers for info dialog:', error);
+      }
+    };
     
-    // Get previous threshold for range calculation
-    const prevThreshold = index > 0 
-      ? parseFloat(TIER_CONFIG[sortedTierKeys[index-1]].staked_up_to_percent)
-      : 0;
+    if (open) {
+      loadTiers();
+    }
+  }, [fetchData, open]);
+
+  // Process tiers to include range information
+  const processedTiers = tiers.map((tier, index, array) => {
+    const currentThreshold = parseFloat(tier.staked_up_to_percent);
+    const prevThreshold = index > 0 ? parseFloat(array[index-1].staked_up_to_percent) : 0;
     
     return {
-      key,
       ...tier,
-      range: `${prevThreshold.toFixed(2)}% - ${currentThreshold.toFixed(2)}%`
+      range: `${prevThreshold.toFixed(2)}% - ${currentThreshold.toFixed(2)}%`,
     };
   });
 
@@ -75,20 +88,22 @@ const TierInfo: React.FC<TierInfoProps> = ({
             <div className="overflow-y-auto max-h-[250px] pr-1">
               <table className="w-full text-sm">
                 <thead>
-                  <tr className="text-left text-xs text-slate-400">
+                  <tr className="text-left text-xs text-slate-400 border-b border-slate-700/30">
                     <th className="py-2 pl-2">Level</th>
                     <th className="py-2">Stake Range</th>
                     <th className="py-2 text-right pr-2">Multiplier</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {tiers.map((tier) => {
-                    const config = getTierConfig(tier.key);
+                  {processedTiers.map((tier) => {
+                    const tierKey = tier.tier.toLowerCase();
+                    const tierExists = TIER_KEYS.includes(tierKey);
+                    const config = getTierConfig(tierKey);
                     const TierIcon = config.icon;
                     
                     return (
                       <tr 
-                        key={tier.key}
+                        key={tier.tier}
                         className="border-t border-slate-700/30 hover:bg-slate-700/20"
                       >
                         <td className="py-2 pl-2">
@@ -97,7 +112,7 @@ const TierInfo: React.FC<TierInfoProps> = ({
                               <TierIcon className={cn("w-3 h-3", config.color)} />
                             </div>
                             <span className={config.color}>
-                              {getTierDisplayName(tier.key)}
+                              {tier.tier_name || getTierDisplayName(tierKey)}
                             </span>
                           </div>
                         </td>
