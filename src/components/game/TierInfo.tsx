@@ -7,6 +7,9 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { TIER_CONFIG } from '@/lib/config/tierConfig';
+import { cn } from '@/lib/utils';
+import { getTierConfig, getTierDisplayName } from '@/lib/utils/tierUtils';
 
 interface TierInfoProps {
   open: boolean;
@@ -17,9 +20,34 @@ const TierInfo: React.FC<TierInfoProps> = ({
   open,
   onOpenChange,
 }) => {
+  // Get all tier keys and sort them by percentage threshold
+  const tierKeys = Object.keys(TIER_CONFIG);
+  const sortedTierKeys = [...tierKeys].sort((a, b) => {
+    const thresholdA = parseFloat(TIER_CONFIG[a].staked_up_to_percent);
+    const thresholdB = parseFloat(TIER_CONFIG[b].staked_up_to_percent);
+    return thresholdA - thresholdB;
+  });
+  
+  // Create tier data with percentage ranges
+  const tiers = sortedTierKeys.map((key, index) => {
+    const tier = TIER_CONFIG[key];
+    const currentThreshold = parseFloat(tier.staked_up_to_percent);
+    
+    // Get previous threshold for range calculation
+    const prevThreshold = index > 0 
+      ? parseFloat(TIER_CONFIG[sortedTierKeys[index-1]].staked_up_to_percent)
+      : 0;
+    
+    return {
+      key,
+      ...tier,
+      range: `${prevThreshold.toFixed(2)}% - ${currentThreshold.toFixed(2)}%`
+    };
+  });
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-<DialogContent className="bg-slate-900 border-slate-700/50 max-h-[85vh] md:max-h-[90vh] overflow-hidden flex flex-col">
+      <DialogContent className="bg-slate-900 border-slate-700/50 max-h-[85vh] md:max-h-[90vh] overflow-hidden flex flex-col">
         <DialogHeader className="bg-slate-900 pb-4">
           <DialogTitle className="text-purple-200">
             Understanding Level Statistics
@@ -36,6 +64,53 @@ const TierInfo: React.FC<TierInfoProps> = ({
               All displayed numbers should be used as guides only. The farm's total stake can change rapidly, 
               causing displayed data to be slightly behind real-time conditions.
             </p>
+          </div>
+
+          {/* Tier Level Table */}
+          <div className="bg-slate-800/30 rounded-lg p-4 border border-slate-700/50">
+            <h3 className="font-semibold mb-3 text-purple-300 flex items-center gap-2">
+              <Gauge className="w-4 h-4" />
+              Level Multipliers and Ranges
+            </h3>
+            <div className="overflow-y-auto max-h-[250px] pr-1">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="text-left text-xs text-slate-400">
+                    <th className="py-2 pl-2">Level</th>
+                    <th className="py-2">Stake Range</th>
+                    <th className="py-2 text-right pr-2">Multiplier</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {tiers.map((tier) => {
+                    const config = getTierConfig(tier.key);
+                    const TierIcon = config.icon;
+                    
+                    return (
+                      <tr 
+                        key={tier.key}
+                        className="border-t border-slate-700/30 hover:bg-slate-700/20"
+                      >
+                        <td className="py-2 pl-2">
+                          <div className="flex items-center gap-2">
+                            <div className={cn("p-1 rounded-lg", config.bgColor)}>
+                              <TierIcon className={cn("w-3 h-3", config.color)} />
+                            </div>
+                            <span className={config.color}>
+                              {getTierDisplayName(tier.key)}
+                            </span>
+                          </div>
+                        </td>
+                        <td className="py-2 text-slate-300">{tier.range}</td>
+                        <td className={cn("py-2 text-right pr-2 font-medium", config.color)}>
+                          {parseFloat(tier.weight).toFixed(3)}x
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
           </div>
 
           <div>
@@ -117,7 +192,7 @@ const TierInfo: React.FC<TierInfoProps> = ({
             <ul className="space-y-1 text-sm text-slate-300">
               <li className="flex gap-2">
                 <span>•</span>
-                <span>Each level has unique reward multiplier (click ▼ to view all)</span>
+                <span>Each level has unique reward multiplier</span>
               </li>
               <li className="flex gap-2">
                 <span>•</span>
