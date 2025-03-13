@@ -273,14 +273,16 @@ export const TierDisplay: React.FC<TierDisplayProps> = ({
                 )}
               </div>
               <div className="space-y-2">
-                {totalAmountForNext !== undefined && (
-                  <p className="text-sm text-slate-300">
-                    Total needed: {formattedTotalNeeded} {symbol}
-                    <span className="text-xs text-slate-400 ml-1">
-                      ({nextTier.staked_up_to_percent}% threshold)
-                    </span>
-                  </p>
-                )}
+{totalAmountForNext !== undefined && (
+  <p className="text-sm text-slate-300">
+    Total needed: {formattedTotalNeeded} {symbol}
+    <span className="text-xs text-slate-400 ml-1">
+      (min. {nextTier.tier_name} threshold: {
+        // Show lower boundary of next tier, not upper boundary
+        index > 0 ? sortedTiers[currentTierIndex].staked_up_to_percent : "0"}%)
+    </span>
+  </p>
+)}
                 <p className={cn(
                   "font-medium text-sm",
                   additionalAmountNeeded !== undefined && additionalAmountNeeded <= 0 
