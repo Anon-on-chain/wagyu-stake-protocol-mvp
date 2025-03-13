@@ -212,17 +212,12 @@ export const TierDisplay: React.FC<TierDisplayProps> = ({
         <CardContent className="space-y-4">
           <div className="space-y-2">
             {/* Progress bar - fixed implementation */}
-            <Progress 
-              value={progress} 
-              className="h-2 bg-slate-800/50"
-              // Directly apply the bg-color class instead of text-color
-              color={tierStyle.bgColor.replace('bg-', 'bg-').replace('/10', '/100')}
-              // Alternative approach: directly set the color utility class
-              indicatorClassName={cn(
-                "transition-all duration-500",
-                tierStyle.color.replace('text-', 'bg-')
-              )}
-            />
+<Progress 
+  value={progress} 
+  className="h-2 bg-slate-800/50"
+  color={tierStyle.color.replace('text-', 'bg-')}
+  indicatorClassName="transition-all duration-500"
+/>
             <div className="flex justify-between items-center text-xs">
               <span className="text-slate-300">
                 Safe Unstake: {formatNumber(safeUnstakeAmount, decimals)} {symbol}
@@ -277,9 +272,7 @@ export const TierDisplay: React.FC<TierDisplayProps> = ({
   <p className="text-sm text-slate-300">
     Total needed: {formattedTotalNeeded} {symbol}
     <span className="text-xs text-slate-400 ml-1">
-      (min. {nextTier.tier_name} threshold: {
-        // Show lower boundary of next tier, not upper boundary
-        index > 0 ? sortedTiers[currentTierIndex].staked_up_to_percent : "0"}%)
+      (to reach {parseFloat(currentTier.staked_up_to_percent).toFixed(2)}% threshold)
     </span>
   </p>
 )}
