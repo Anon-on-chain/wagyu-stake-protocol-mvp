@@ -26,7 +26,6 @@ const Progress = React.forwardRef
       <ProgressPrimitive.Indicator
         className={cn(
           "h-full transition-all duration-300 ease-in-out",
-          // Fix: Apply color directly as a class if provided
           color,
           indicatorClassName
         )}
