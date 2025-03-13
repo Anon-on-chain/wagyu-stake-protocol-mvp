@@ -104,12 +104,12 @@ export function useTierCalculation(
             // we need to recalculate these amounts for the correct tier transition
             if (progress.currentTier.tier !== stakedData.tier && nextTier) {
               try {
-                // Import the calculation function directly to avoid circular dependencies
-                const { calculateAmountForNextTier } = require('../utils/tierUtils');
+                // Import the calculation function from the same module to avoid require()
+                // We already have it imported at the top of the file
                 const { decimals } = parseTokenString(stakedData.staked_quantity);
                 
                 // Recalculate for the user's actual tier
-                additionalAmountNeeded = calculateAmountForNextTier(
+                const recalculatedAmount = calculateAmountForNextTier(
                   stakedData.staked_quantity,
                   poolData.total_staked_quantity,
                   userTier,
@@ -117,7 +117,8 @@ export function useTierCalculation(
                   decimals
                 );
                 
-                totalAmountForNext = stakedValue + additionalAmountNeeded;
+                additionalAmountNeeded = recalculatedAmount;
+                totalAmountForNext = stakedValue + recalculatedAmount;
               } catch (err) {
                 console.error('Error recalculating tier amounts:', err);
                 // Keep the original values if calculation fails
