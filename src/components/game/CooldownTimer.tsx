@@ -71,11 +71,11 @@ export const CooldownTimer: React.FC<CooldownTimerProps> = ({
         </span>
       </div>
 
-<Progress 
-  value={progress} 
-  className="h-1.5 bg-slate-800/50"
-  color={progressColor}
-/>
+      <Progress 
+        value={progress} 
+        className="h-1.5 bg-slate-800/50"
+        color={progressColor}
+      />
       
       {ready && (
         <p className={cn(
