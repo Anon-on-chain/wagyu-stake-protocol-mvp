@@ -10,8 +10,8 @@ interface ProgressProps extends React.ComponentPropsWithoutRef<typeof ProgressPr
 }
 
 // Use proper TypeScript typing for the component
-const Progress = React.forwardRef
-  HTMLDivElement,
+const Progress = React.forwardRef<
+  React.ElementRef<typeof ProgressPrimitive.Root>,
   ProgressProps
 >(({ className, value = 0, indicatorClassName, color, ...props }, ref) => {
   // Ensure value is between 0-100
