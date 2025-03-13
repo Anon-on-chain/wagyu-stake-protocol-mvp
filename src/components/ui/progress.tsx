@@ -2,17 +2,20 @@ import * as React from "react"
 import * as ProgressPrimitive from "@radix-ui/react-progress"
 import { cn } from "@/lib/utils"
 
+// Define proper interface for component props
 interface ProgressProps extends React.ComponentPropsWithoutRef<typeof ProgressPrimitive.Root> {
   indicatorClassName?: string;
   color?: string;
+  value?: number;
 }
 
+// Use proper TypeScript typing for the component
 const Progress = React.forwardRef
-  React.ElementRef<typeof ProgressPrimitive.Root>,
+  HTMLDivElement,
   ProgressProps
->(({ className, value, indicatorClassName, color, ...props }, ref) => {
+>(({ className, value = 0, indicatorClassName, color, ...props }, ref) => {
   // Ensure value is between 0-100
-  const normalizedValue = Math.min(100, Math.max(0, value || 0));
+  const normalizedValue = Math.min(100, Math.max(0, value));
   
   return (
     <ProgressPrimitive.Root
@@ -37,6 +40,7 @@ const Progress = React.forwardRef
   )
 })
 
-Progress.displayName = ProgressPrimitive.Root.displayName
+// Set proper displayName
+Progress.displayName = "Progress"
 
 export { Progress }
