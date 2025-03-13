@@ -7,7 +7,7 @@ interface ProgressProps extends React.ComponentPropsWithoutRef<typeof ProgressPr
   color?: string;
 }
 
-const Progress = React.forwardRef<
+const Progress = React.forwardRef
   React.ElementRef<typeof ProgressPrimitive.Root>,
   ProgressProps
 >(({ className, value, indicatorClassName, color, ...props }, ref) => {
@@ -26,7 +26,8 @@ const Progress = React.forwardRef<
       <ProgressPrimitive.Indicator
         className={cn(
           "h-full transition-all duration-300 ease-in-out",
-          color || "bg-primary",
+          // Fix: Apply color directly as a class if provided
+          color,
           indicatorClassName
         )}
         style={{
