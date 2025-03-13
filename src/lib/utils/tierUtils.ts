@@ -1,5 +1,4 @@
-// src/lib/utils/tierUtils.ts - Complete with all required functions
-
+// src/lib/utils/tierUtils.ts
 import { TierEntity, TierProgress } from '../types/tier';
 import { parseTokenString } from './tokenUtils';
 import { TIER_CONFIG } from '../config/tierConfig';
@@ -71,7 +70,6 @@ export const determineTier = (
 
 /**
  * Calculate how much a user can safely unstake without dropping a tier
- * THIS WAS MISSING - Added to fix build error
  */
 export const calculateSafeUnstakeAmount = (
   stakedAmount: string,
@@ -130,8 +128,8 @@ export const calculateSafeUnstakeAmount = (
 };
 
 /**
- * Calculates EXACT amount needed to reach the next tier - NO PREDICTION
- * This only calculates for the immediate next tier
+ * Calculates the exact amount needed to reach the next tier using LP formula
+ * This accounts for how adding tokens changes the total pool amount
  */
 export function calculateAmountForNextTier(
   stakedAmount: string,
@@ -145,18 +143,43 @@ export function calculateAmountForNextTier(
     const { amount: currentStake } = parseTokenString(stakedAmount);
     const { amount: poolTotal } = parseTokenString(totalStaked);
     
-    // Get the next tier threshold as a decimal (e.g., 0.5% = 0.005)
+    // Get the next tier threshold as a decimal (e.g., 3.10% = 0.0310)
     const nextThreshold = parseFloat(nextTier.staked_up_to_percent) / 100;
     
-    // Calculate exact amount needed to reach next tier threshold
-    // Formula: (nextThreshold * poolTotal - currentStake) / (1 - nextThreshold)
+    // Log calculation inputs for debugging
+    console.log('Tier calculation inputs:', {
+      currentStake,
+      poolTotal,
+      nextThreshold: nextThreshold,
+      nextTierPercent: nextTier.staked_up_to_percent
+    });
+    
+    // Calculate using the LP-style formula to determine how much to add
+    // so that (currentStake + X) / (poolTotal + X) = nextThreshold
+    // Formula: X = (nextThreshold * poolTotal - currentStake) / (1 - nextThreshold)
     const amountForNextTier = (nextThreshold * poolTotal - currentStake) / (1 - nextThreshold);
     
-    // Account for fee - if we stake X, only (1-fee)*X gets credited
+    // Apply staking fee (0.3%)
     const withFee = amountForNextTier > 0 ? amountForNextTier / (1 - FEE_RATE) : 0;
     
-    // Add a small buffer to ensure tier change (avoiding floating point issues)
-    const withBuffer = withFee * 1.01;
+    // Add a small buffer (1.5%) to ensure tier change with market fluctuations
+    const withBuffer = withFee * 1.015;
+    
+    // Calculate what total stake would be after adding this amount
+    const projectedTotalStake = currentStake + (withBuffer * (1 - FEE_RATE));
+    const projectedPoolTotal = poolTotal + (withBuffer * (1 - FEE_RATE));
+    const projectedPercentage = (projectedTotalStake / projectedPoolTotal) * 100;
+    
+    // Log calculation results for debugging
+    console.log('Tier calculation results:', {
+      rawAmountNeeded: amountForNextTier,
+      withFee,
+      withBuffer,
+      projectedTotalStake,
+      projectedPoolTotal,
+      projectedPercentage,
+      nextTierThreshold: parseFloat(nextTier.staked_up_to_percent)
+    });
     
     // Round to proper decimals
     const multiplier = Math.pow(10, decimals);
