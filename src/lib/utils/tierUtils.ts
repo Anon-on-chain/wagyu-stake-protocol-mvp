@@ -131,6 +131,7 @@ export const calculateSafeUnstakeAmount = (
  * Calculates the exact amount needed to reach the next tier using LP formula
  * This accounts for how adding tokens changes the total pool amount
  */
+// Update the calculateAmountForNextTier function in tierUtils.ts
 export function calculateAmountForNextTier(
   stakedAmount: string,
   totalStaked: string,
@@ -177,8 +178,7 @@ export function calculateAmountForNextTier(
       withBuffer,
       projectedTotalStake,
       projectedPoolTotal,
-      projectedPercentage,
-      nextTierThreshold: parseFloat(nextTier.staked_up_to_percent)
+      projectedPercentage
     });
     
     // Round to proper decimals
