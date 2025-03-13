@@ -144,42 +144,31 @@ export function calculateAmountForNextTier(
     const { amount: currentStake } = parseTokenString(stakedAmount);
     const { amount: poolTotal } = parseTokenString(totalStaked);
     
-    // Get the next tier threshold as a decimal (e.g., 3.10% = 0.0310)
-    const nextThreshold = parseFloat(nextTier.staked_up_to_percent) / 100;
+    // Get the LOWER threshold for the next tier (which is the current tier's upper threshold)
+    // This is the minimum percentage needed to move to the next tier
+    const targetThreshold = parseFloat(currentTier.staked_up_to_percent) / 100;
+    
+    // Add a tiny bit to ensure we cross the threshold
+    const effectiveThreshold = targetThreshold + 0.0001;
     
     // Log calculation inputs for debugging
-    console.log('Tier calculation inputs:', {
+    console.log('Tier boundary calculation:', {
       currentStake,
       poolTotal,
-      nextThreshold: nextThreshold,
-      nextTierPercent: nextTier.staked_up_to_percent
+      currentTierUpperThreshold: currentTier.staked_up_to_percent,
+      nextTierLowerThreshold: currentTier.staked_up_to_percent,
+      effectiveThreshold
     });
     
     // Calculate using the LP-style formula to determine how much to add
-    // so that (currentStake + X) / (poolTotal + X) = nextThreshold
-    // Formula: X = (nextThreshold * poolTotal - currentStake) / (1 - nextThreshold)
-    const amountForNextTier = (nextThreshold * poolTotal - currentStake) / (1 - nextThreshold);
+    // to reach just above the current tier's upper threshold
+    const amountForNextTier = (effectiveThreshold * poolTotal - currentStake) / (1 - effectiveThreshold);
     
     // Apply staking fee (0.3%)
     const withFee = amountForNextTier > 0 ? amountForNextTier / (1 - FEE_RATE) : 0;
     
-    // Add a small buffer (1.5%) to ensure tier change with market fluctuations
-    const withBuffer = withFee * 1.015;
-    
-    // Calculate what total stake would be after adding this amount
-    const projectedTotalStake = currentStake + (withBuffer * (1 - FEE_RATE));
-    const projectedPoolTotal = poolTotal + (withBuffer * (1 - FEE_RATE));
-    const projectedPercentage = (projectedTotalStake / projectedPoolTotal) * 100;
-    
-    // Log calculation results for debugging
-    console.log('Tier calculation results:', {
-      rawAmountNeeded: amountForNextTier,
-      withFee,
-      withBuffer,
-      projectedTotalStake,
-      projectedPoolTotal,
-      projectedPercentage
-    });
+    // Add a small buffer (1%) to ensure tier change
+    const withBuffer = withFee * 1.01;
     
     // Round to proper decimals
     const multiplier = Math.pow(10, decimals);
