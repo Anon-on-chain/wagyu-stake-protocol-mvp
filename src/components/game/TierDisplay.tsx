@@ -211,9 +211,13 @@ export const TierDisplay: React.FC<TierDisplayProps> = ({
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="space-y-2">
+            {/* Progress bar - fixed implementation */}
             <Progress 
               value={progress} 
               className="h-2 bg-slate-800/50"
+              // Directly apply the bg-color class instead of text-color
+              color={tierStyle.bgColor.replace('bg-', 'bg-').replace('/10', '/100')}
+              // Alternative approach: directly set the color utility class
               indicatorClassName={cn(
                 "transition-all duration-500",
                 tierStyle.color.replace('text-', 'bg-')
@@ -272,6 +276,9 @@ export const TierDisplay: React.FC<TierDisplayProps> = ({
                 {totalAmountForNext !== undefined && (
                   <p className="text-sm text-slate-300">
                     Total needed: {formattedTotalNeeded} {symbol}
+                    <span className="text-xs text-slate-400 ml-1">
+                      ({nextTier.staked_up_to_percent}% threshold)
+                    </span>
                   </p>
                 )}
                 <p className={cn(
@@ -289,7 +296,7 @@ export const TierDisplay: React.FC<TierDisplayProps> = ({
                   <div className="bg-amber-500/10 rounded-lg p-2 flex items-start gap-1.5 mt-1">
                     <AlertCircle className="w-4 h-4 text-amber-400 mt-0.5 flex-shrink-0" />
                     <p className="text-xs text-amber-200">
-                      These estimates account for the 0.3% staking fee and pool changes
+                      Calculation accounts for 0.3% fee and how your stake affects the total pool
                     </p>
                   </div>
                 )}
@@ -302,7 +309,7 @@ export const TierDisplay: React.FC<TierDisplayProps> = ({
         </CardContent>
       </Card>
 
-      {/* The updated multiplier dialog with percentage ranges */}
+      {/* The multiplier dialog with percentage ranges */}
       <Dialog open={isMultiplierDialogOpen} onOpenChange={setMultiplierDialogOpen}>
         <DialogContent className="bg-slate-900 border-slate-700/50 text-slate-100">
           <DialogHeader>
