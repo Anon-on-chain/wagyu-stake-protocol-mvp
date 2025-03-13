@@ -5,7 +5,7 @@ import { TierEntity, TierProgress } from '../types/tier';
 import { StakedEntity } from '../types/staked';
 import { PoolEntity } from '../types/pool';
 import { parseTokenString } from '../utils/tokenUtils';
-import { calculateTierProgress, determineTier } from '../utils/tierUtils';
+import { calculateTierProgress, determineTier, calculateAmountForNextTier } from '../utils/tierUtils';
 
 /**
  * Hook for calculating tier progress information
@@ -104,8 +104,6 @@ export function useTierCalculation(
             // we need to recalculate these amounts for the correct tier transition
             if (progress.currentTier.tier !== stakedData.tier && nextTier) {
               try {
-                // Import the calculation function from the same module to avoid require()
-                // We already have it imported at the top of the file
                 const { decimals } = parseTokenString(stakedData.staked_quantity);
                 
                 // Recalculate for the user's actual tier
