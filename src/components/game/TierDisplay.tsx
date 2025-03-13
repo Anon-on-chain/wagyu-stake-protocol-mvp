@@ -139,7 +139,8 @@ export const TierDisplay: React.FC<TierDisplayProps> = ({
     totalAmountForNext,
     additionalAmountNeeded,
     symbol,
-    progress = 0
+    progress = 0,
+    stakedPercent
   } = tierProgress;
   
   // Get next tier from tierProgress or find it manually
@@ -211,13 +212,12 @@ export const TierDisplay: React.FC<TierDisplayProps> = ({
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="space-y-2">
-            {/* Progress bar - fixed implementation */}
-<Progress 
-  value={progress} 
-  className="h-2 bg-slate-800/50"
-  color={tierStyle.color.replace('text-', 'bg-')}
-  indicatorClassName="transition-all duration-500"
-/>
+            <Progress 
+              value={progress} 
+              className="h-2 bg-slate-800/50"
+              color={tierStyle.color.replace('text-', 'bg-')}
+              indicatorClassName="transition-all duration-500"
+            />
             <div className="flex justify-between items-center text-xs">
               <span className="text-slate-300">
                 Safe Unstake: {formatNumber(safeUnstakeAmount, decimals)} {symbol}
@@ -226,7 +226,7 @@ export const TierDisplay: React.FC<TierDisplayProps> = ({
                 "font-medium",
                 isUpgradeAvailable ? "text-green-400" : "text-slate-300"
               )}>
-                {progress.toFixed(1)}%
+                {progress.toFixed(1)}% ({stakedPercent?.toFixed(4)}% of pool)
               </span>
             </div>
           </div>
@@ -268,14 +268,14 @@ export const TierDisplay: React.FC<TierDisplayProps> = ({
                 )}
               </div>
               <div className="space-y-2">
-{totalAmountForNext !== undefined && (
-  <p className="text-sm text-slate-300">
-    Total needed: {formattedTotalNeeded} {symbol}
-    <span className="text-xs text-slate-400 ml-1">
-      (to reach {parseFloat(currentTier.staked_up_to_percent).toFixed(2)}% threshold)
-    </span>
-  </p>
-)}
+                {totalAmountForNext !== undefined && (
+                  <p className="text-sm text-slate-300">
+                    Total needed: {formattedTotalNeeded} {symbol}
+                    <span className="text-xs text-slate-400 ml-1">
+                      (to reach {parseFloat(nextTier.staked_up_to_percent).toFixed(2)}% threshold)
+                    </span>
+                  </p>
+                )}
                 <p className={cn(
                   "font-medium text-sm",
                   additionalAmountNeeded !== undefined && additionalAmountNeeded <= 0 
