@@ -49,11 +49,8 @@ export const determineTier = (
       
       // If user percentage is below this threshold
       if (stakedPercent <= tierThreshold) {
-        // We found the boundary - use previous tier if we're not at the first tier
-        if (i > 0) {
-          return sortedTiers[i-1];
-        }
-        return selectedTier;
+        // We found the boundary tier - use this tier
+        return sortedTiers[i];
       }
       
       // Otherwise, update selected tier and continue checking
@@ -96,17 +93,15 @@ export const calculateSafeUnstakeAmount = (
       return Math.max(0, stakedValue - 0.00000001);
     }
     
-    // Get the previous tier's threshold
-    const prevTierIndex = currentTierIndex - 1;
-    const prevTier = sortedTiers[prevTierIndex];
-    const prevTierThreshold = parseFloat(prevTier.staked_up_to_percent) / 100;
+    // Get the current tier's threshold
+    const currentTierThreshold = parseFloat(currentTier.staked_up_to_percent) / 100;
     
-    // Calculate minimum amount needed to maintain current tier
-    // Formula: minimum = (prevThreshold * totalValue) / (1 - prevThreshold)
+    // Calculate minimum amount needed to maintain current tier percentage
+    // Formula: minimum = (currentThreshold * (totalValue - stakedValue)) / (1 - currentThreshold)
     let minimumAmount;
     
-    if (prevTierThreshold < 1) {
-      minimumAmount = (prevTierThreshold * totalValue) / (1 - prevTierThreshold);
+    if (currentTierThreshold < 1) {
+      minimumAmount = (currentTierThreshold * (totalValue - stakedValue)) / (1 - currentTierThreshold);
     } else {
       // Edge case if threshold is 100%
       minimumAmount = stakedValue; // Can't unstake anything
@@ -131,7 +126,6 @@ export const calculateSafeUnstakeAmount = (
  * Calculates the exact amount needed to reach the next tier using LP formula
  * This accounts for how adding tokens changes the total pool amount
  */
-// Update the calculateAmountForNextTier function in tierUtils.ts
 export function calculateAmountForNextTier(
   stakedAmount: string,
   totalStaked: string,
@@ -144,31 +138,37 @@ export function calculateAmountForNextTier(
     const { amount: currentStake } = parseTokenString(stakedAmount);
     const { amount: poolTotal } = parseTokenString(totalStaked);
     
-    // Get the LOWER threshold for the next tier (which is the current tier's upper threshold)
-    // This is the minimum percentage needed to move to the next tier
-    const targetThreshold = parseFloat(currentTier.staked_up_to_percent) / 100;
+    // Get the next tier's threshold percentage (as a decimal)
+    const nextTierThreshold = parseFloat(nextTier.staked_up_to_percent) / 100;
     
-    // Add a tiny bit to ensure we cross the threshold
-    const effectiveThreshold = targetThreshold + 0.0001;
+    // Add a tiny bit to ensure we cross the threshold (0.001%)
+    const effectiveThreshold = nextTierThreshold + 0.00001;
     
     // Log calculation inputs for debugging
-    console.log('Tier boundary calculation:', {
+    console.log('Tier calculation:', {
       currentStake,
       poolTotal,
-      currentTierUpperThreshold: currentTier.staked_up_to_percent,
-      nextTierLowerThreshold: currentTier.staked_up_to_percent,
-      effectiveThreshold
+      currentTierThreshold: parseFloat(currentTier.staked_up_to_percent),
+      nextTierThreshold: parseFloat(nextTier.staked_up_to_percent),
+      effectiveThreshold: effectiveThreshold * 100 + '%'
     });
     
-    // Calculate using the LP-style formula to determine how much to add
-    // to reach just above the current tier's upper threshold
-    const amountForNextTier = (effectiveThreshold * poolTotal - currentStake) / (1 - effectiveThreshold);
+    // Calculate using the LP formula:
+    // If we add X tokens, and want (currentStake + X) / (poolTotal + X) >= threshold
+    // Solving for X: X >= (threshold * poolTotal - currentStake) / (1 - threshold)
+    const amountNeeded = (effectiveThreshold * poolTotal - currentStake) / (1 - effectiveThreshold);
     
-    // Apply staking fee (0.3%)
-    const withFee = amountForNextTier > 0 ? amountForNextTier / (1 - FEE_RATE) : 0;
+    // Apply staking fee (0.3%) - we need to stake more to account for the fee
+    const withFee = amountNeeded > 0 ? amountNeeded / (1 - FEE_RATE) : 0;
     
-    // Add a small buffer (1%) to ensure tier change
+    // Add a small buffer (1%) to ensure tier change due to rounding
     const withBuffer = withFee * 1.01;
+    
+    console.log('Calculated amounts:', {
+      amountNeeded,
+      withFee,
+      withBuffer
+    });
     
     // Round to proper decimals
     const multiplier = Math.pow(10, decimals);
@@ -227,16 +227,22 @@ export const calculateTierProgress = (
 
     // Get tier thresholds
     const currentTierThreshold = parseFloat(currentTier.staked_up_to_percent);
+    const prevTierThreshold = prevTier ? parseFloat(prevTier.staked_up_to_percent) : 0;
     const nextTierThreshold = nextTier ? parseFloat(nextTier.staked_up_to_percent) : 100;
     
     // Calculate progress percentage toward next tier
     let progress = 0;
     if (nextTier) {
-      const rangeSize = nextTierThreshold - currentTierThreshold;
-      progress = rangeSize > 0 
-        ? ((stakedPercent - currentTierThreshold) / rangeSize) * 100
-        : 100;
-      progress = Math.min(100, Math.max(0, progress)); // Clamp between 0-100
+      // Calculate progress within the current tier's range
+      const currentRange = currentTierThreshold - prevTierThreshold;
+      const positionInRange = stakedPercent - prevTierThreshold;
+      
+      if (currentRange > 0) {
+        progress = (positionInRange / currentRange) * 100;
+      }
+      
+      // Ensure progress is in valid range
+      progress = Math.min(100, Math.max(0, progress));
     } else {
       progress = 100; // At max tier
     }
@@ -280,7 +286,12 @@ export const calculateTierProgress = (
       totalAmountForNext,
       additionalAmountNeeded,
       weight: parseFloat(currentTier.weight),
-      safeUnstakeAmount
+      safeUnstakeAmount,
+      // Add threshold values for easy reference
+      currentThreshold: currentTierThreshold,
+      nextThreshold: nextTierThreshold,
+      prevThreshold: prevTierThreshold,
+      stakedPercent: stakedPercent
     };
   } catch (error) {
     console.error('Error in calculateTierProgress:', error);
