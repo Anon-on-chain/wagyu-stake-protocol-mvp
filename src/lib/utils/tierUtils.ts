@@ -166,11 +166,11 @@ export function calculateAmountForNextTier(
     const { amount: currentStake } = parseTokenString(stakedAmount);
     const { amount: poolTotal } = parseTokenString(totalStaked);
     
-    // Get tier thresholds
-    const { upper: upperThreshold } = getTierThresholds(nextTier.tier, tiers);
+    // Get tier thresholds - we need the LOWER bound of the next tier
+    const { lower: lowerThreshold } = getTierThresholds(nextTier.tier, tiers);
     
     // Convert to decimal and add small margin
-    const targetThreshold = (upperThreshold / 100) + 0.00001;
+    const targetThreshold = (lowerThreshold / 100) + 0.00001;
     
     // Log calculation inputs for debugging
     console.log('Tier calculation:', {
@@ -257,7 +257,9 @@ export const calculateTierProgress = (
     const thresholds = getTierThresholds(currentTier.tier, tiers);
     const lowerThreshold = thresholds.lower;
     const upperThreshold = thresholds.upper;
-    const nextThreshold = nextTier ? parseFloat(nextTier.staked_up_to_percent) : 100;
+    
+    // For next tier, get its lower threshold which is the same as current tier's upper threshold
+    const nextThreshold = nextTier ? getTierThresholds(nextTier.tier, tiers).lower : 100;
     
     // Calculate progress percentage within current tier's range
     let progress = 0;
