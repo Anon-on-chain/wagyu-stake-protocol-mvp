@@ -166,11 +166,20 @@ export function calculateAmountForNextTier(
     const { amount: currentStake } = parseTokenString(stakedAmount);
     const { amount: poolTotal } = parseTokenString(totalStaked);
     
-    // Get tier thresholds - we need the LOWER bound of the next tier
-    const { lower: lowerThreshold } = getTierThresholds(nextTier.tier, tiers);
+    // Get tier thresholds directly (don't rely on complex functions)
+    // Get the current tier's upper threshold, which is the next tier's lower threshold
+    const sortedTiers = [...tiers].sort((a, b) => 
+      parseFloat(a.staked_up_to_percent) - parseFloat(b.staked_up_to_percent)
+    );
+    
+    // Find current tier index
+    const currentTierIndex = sortedTiers.findIndex(t => t.tier === currentTier.tier);
+    
+    // Current tier's upper threshold is what we need to reach for the next tier
+    const upperThreshold = parseFloat(currentTier.staked_up_to_percent);
     
     // Convert to decimal and add small margin
-    const targetThreshold = (lowerThreshold / 100) + 0.00001;
+    const targetThreshold = (upperThreshold / 100) + 0.00001;
     
     // Log calculation inputs for debugging
     console.log('Tier calculation:', {
@@ -253,11 +262,14 @@ export const calculateTierProgress = (
       ? sortedTiers[prevTierIndex] 
       : undefined;
 
-    // Get tier thresholds
+    // Get tier thresholds for current tier
     const thresholds = getTierThresholds(currentTier.tier, tiers);
     const lowerThreshold = thresholds.lower;
     const upperThreshold = thresholds.upper;
-    const nextThreshold = nextTier ? parseFloat(nextTier.staked_up_to_percent) : 100;
+    
+    // For next tier, we need to directly get the lower threshold
+    // The lower threshold is the upper threshold of the current tier
+    const nextTierLowerThreshold = upperThreshold; // This is the key fix
     
     // Calculate progress percentage within current tier's range
     let progress = 0;
@@ -314,7 +326,7 @@ export const calculateTierProgress = (
       safeUnstakeAmount,
       // Add threshold values for easy reference
       currentThreshold: upperThreshold,
-      nextThreshold: nextThreshold,
+      nextThreshold: nextTierLowerThreshold,
       prevThreshold: lowerThreshold,
       stakedPercent: stakedPercent
     };
