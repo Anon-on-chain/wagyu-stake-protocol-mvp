@@ -257,9 +257,7 @@ export const calculateTierProgress = (
     const thresholds = getTierThresholds(currentTier.tier, tiers);
     const lowerThreshold = thresholds.lower;
     const upperThreshold = thresholds.upper;
-    
-    // For next tier, get its lower threshold which is the same as current tier's upper threshold
-    const nextThreshold = nextTier ? getTierThresholds(nextTier.tier, tiers).lower : 100;
+    const nextThreshold = nextTier ? parseFloat(nextTier.staked_up_to_percent) : 100;
     
     // Calculate progress percentage within current tier's range
     let progress = 0;
