@@ -272,8 +272,8 @@ export const TierDisplay: React.FC<TierDisplayProps> = ({
                   <p className="text-sm text-slate-300">
                     Total needed: {formattedTotalNeeded} {symbol}
                     <span className="text-xs text-slate-400 ml-1">
-                      (to reach {tierProgress.nextTier && tierProgress.prevThreshold !== undefined
-                        ? parseFloat(tierProgress.nextThreshold?.toString()).toFixed(2)
+                      (to reach {tierProgress.nextTier && tierProgress.nextThreshold !== undefined
+                        ? parseFloat(tierProgress.nextThreshold.toString()).toFixed(2)
                         : '?'}% threshold)
                     </span>
                   </p>
