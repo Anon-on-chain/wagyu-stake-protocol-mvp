@@ -131,18 +131,31 @@ export function calculateAmountForNextTier(
   totalStaked: string,
   currentTier: TierEntity,
   nextTier: TierEntity,
-  decimals: number = 8
+  decimals: number = 8,
+  tiers: TierEntity[] = []  // Add tiers parameter
 ): number {
   try {
     // Get current stake and total pool
     const { amount: currentStake } = parseTokenString(stakedAmount);
     const { amount: poolTotal } = parseTokenString(totalStaked);
     
-    // Get the next tier's threshold percentage (as a decimal)
-    const nextTierThreshold = parseFloat(nextTier.staked_up_to_percent) / 100;
+    // Get the LOWER threshold for the next tier
+    // This requires finding the previous tier's threshold
+    // Sort tiers by percentage threshold
+    const sortedTiers = [...tiers].sort((a, b) => 
+      parseFloat(a.staked_up_to_percent) - parseFloat(b.staked_up_to_percent)
+    );
+    
+    // Find the index of the next tier
+    const nextTierIndex = sortedTiers.findIndex(t => t.tier === nextTier.tier);
+    
+    // Get the threshold of the previous tier (which is the lower bound for the next tier)
+    const prevTierThreshold = nextTierIndex > 0 
+      ? parseFloat(sortedTiers[nextTierIndex - 1].staked_up_to_percent) / 100
+      : 0;
     
     // Add a tiny bit to ensure we cross the threshold (0.001%)
-    const effectiveThreshold = nextTierThreshold + 0.00001;
+    const effectiveThreshold = prevTierThreshold + 0.00001;
     
     // Log calculation inputs for debugging
     console.log('Tier calculation:', {
@@ -258,7 +271,8 @@ export const calculateTierProgress = (
         totalStaked,
         currentTier,
         nextTier,
-        decimals
+        decimals,
+        tiers  // Pass tiers array
       );
       
       // Total needed is current + additional
