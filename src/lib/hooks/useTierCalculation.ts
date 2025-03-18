@@ -112,7 +112,8 @@ export function useTierCalculation(
                   poolData.total_staked_quantity,
                   userTier,
                   nextTier,
-                  decimals
+                  decimals,
+                  tiers  // Pass the tiers array 
                 );
                 
                 additionalAmountNeeded = recalculatedAmount;
